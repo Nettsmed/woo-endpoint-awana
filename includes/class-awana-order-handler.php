@@ -158,8 +158,8 @@ class Awana_Order_Handler {
 		$order->set_currency( $data['currency'] ?? 'NOK' );
 
 		// Set payment method
-		$order->set_payment_method( 'invoice' );
-		$order->set_payment_method_title( 'Invoice' );
+		$order->set_payment_method( 'bacs' );
+		$order->set_payment_method_title( 'BACS' );
 
 		// Calculate totals
 		$order->calculate_totals();
