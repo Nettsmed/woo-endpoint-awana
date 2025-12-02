@@ -79,11 +79,10 @@ class Awana_Sync_Handler {
 	 * @param mixed    $pog_customer_number POG customer number.
 	 */
 	private static function update_pog_customer_number( $order, $pog_customer_number ) {
-		$existing_pog_number = $order->get_meta( '_pog_customer_number' );
+		$existing_pog_number = $order->get_meta( 'pog_customer_number' );
 		$is_new_customer = empty( $existing_pog_number );
 
-		$order->update_meta_data( '_pog_customer_number', $pog_customer_number );
-		$order->update_meta_data( '_pog_customer_id', $pog_customer_number ); // Alias for compatibility
+		$order->update_meta_data( 'pog_customer_number', $pog_customer_number );
 		$order->update_meta_data( '_pog_last_sync_at', current_time( 'mysql' ) );
 		
 		Awana_Logger::info(

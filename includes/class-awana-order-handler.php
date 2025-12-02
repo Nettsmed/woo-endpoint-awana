@@ -74,6 +74,9 @@ class Awana_Order_Handler {
 		// Save order
 		$order->save();
 
+		// Finalize order (convert from placeholder to real order if needed)
+		self::finalize_order( $order );
+
 		// Store line errors and is_new_order flag for REST response
 		$order->awana_line_errors = $line_errors;
 		$order->awana_is_new_order = $is_new_order;
@@ -189,52 +192,72 @@ class Awana_Order_Handler {
 	}
 
 	/**
+	 * Finalize order (convert from placeholder to real order)
+	 *
+	 * @param WC_Order $order WooCommerce order object.
+	 */
+	private static function finalize_order( $order ) {
+		// Check if order is still a placeholder
+		$order_type = $order->get_type();
+		
+		if ( $order_type === 'shop_order_placehold' ) {
+			// Get current status
+			$current_status = $order->get_status();
+			
+			// Force finalization by updating the post type directly
+			// WooCommerce should convert placeholders automatically, but sometimes doesn't
+			// This ensures the order is converted from placeholder to real order
+			global $wpdb;
+			$updated = $wpdb->update(
+				$wpdb->posts,
+				array( 'post_type' => 'shop_order' ),
+				array( 'ID' => $order->get_id() ),
+				array( '%s' ),
+				array( '%d' )
+			);
+			
+			// Clear cache to ensure changes are reflected
+			if ( $updated !== false ) {
+				clean_post_cache( $order->get_id() );
+				
+				Awana_Logger::info(
+					'Order finalized',
+					array(
+						'order_id'   => $order->get_id(),
+						'status'     => $current_status,
+						'old_type'   => 'shop_order_placehold',
+						'new_type'   => 'shop_order',
+					)
+				);
+			}
+		}
+	}
+
+	/**
 	 * Set order meta data
 	 *
 	 * @param WC_Order $order WooCommerce order object.
 	 * @param array    $data Invoice data.
 	 */
 	private static function set_order_meta( $order, $data ) {
-		// Store both _digital_* and _crm_* for compatibility
-		$order->update_meta_data( '_digital_invoice_id', $data['invoiceId'] );
-		$order->update_meta_data( '_crm_invoice_id', $data['invoiceId'] ); // Alias for compatibility
-		
-		if ( ! empty( $data['invoiceNumber'] ) ) {
-			$order->update_meta_data( '_digital_invoice_number', $data['invoiceNumber'] );
+		// Store all meta with crm_ prefix (no underscore)
+		// invoiceId is required, but add safety check
+		if ( ! empty( $data['invoiceId'] ) ) {
+			$order->update_meta_data( 'crm_invoice_id', $data['invoiceId'] );
 		}
 		if ( ! empty( $data['memberId'] ) ) {
-			$order->update_meta_data( '_digital_member_id', $data['memberId'] );
-			$order->update_meta_data( '_crm_member_id', $data['memberId'] ); // Alias for compatibility
-		}
-		if ( ! empty( $data['memberName'] ) ) {
-			$order->update_meta_data( '_digital_member_name', $data['memberName'] );
+			$order->update_meta_data( 'crm_member_id', $data['memberId'] );
 		}
 		if ( ! empty( $data['organizationId'] ) ) {
-			$order->update_meta_data( '_digital_organization_id', $data['organizationId'] );
-			$order->update_meta_data( '_crm_organization_id', $data['organizationId'] ); // Alias for compatibility
-		}
-		if ( ! empty( $data['organizationName'] ) ) {
-			$order->update_meta_data( '_digital_organization_name', $data['organizationName'] );
-		}
-		if ( ! empty( $data['type'] ) ) {
-			$order->update_meta_data( '_digital_type', $data['type'] );
+			$order->update_meta_data( 'crm_organization_id', $data['organizationId'] );
 		}
 		if ( ! empty( $data['source'] ) ) {
-			$order->update_meta_data( '_digital_source', $data['source'] );
+			$order->update_meta_data( 'crm_source', $data['source'] );
 		}
-		$order->update_meta_data( '_digital_sync_woo', 'synced' );
+		$order->update_meta_data( 'crm_sync_woo', 'synced' );
 
 		if ( ! empty( $data['pogCustomerNumber'] ) ) {
-			$order->update_meta_data( '_pog_customer_number', $data['pogCustomerNumber'] );
-			$order->update_meta_data( '_pog_customer_id', $data['pogCustomerNumber'] ); // Alias for compatibility
-		}
-
-		// Store invoice dates
-		if ( ! empty( $data['invoiceDate'] ) ) {
-			$order->update_meta_data( '_digital_invoice_date', $data['invoiceDate'] );
-		}
-		if ( ! empty( $data['dueDate'] ) ) {
-			$order->update_meta_data( '_digital_due_date', $data['dueDate'] );
+			$order->update_meta_data( 'pog_customer_number', $data['pogCustomerNumber'] );
 		}
 	}
 }

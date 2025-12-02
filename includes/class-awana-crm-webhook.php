@@ -21,8 +21,8 @@ class Awana_CRM_Webhook {
 	 * @param mixed    $pog_customer_number POG customer number.
 	 */
 	public static function notify_pog_customer_created( $order, $pog_customer_number ) {
-		$invoice_id = $order->get_meta( '_digital_invoice_id' );
-		$member_id  = $order->get_meta( '_digital_member_id' );
+		$invoice_id = $order->get_meta( 'crm_invoice_id' );
+		$member_id  = $order->get_meta( 'crm_member_id' );
 
 		if ( empty( $invoice_id ) || empty( $member_id ) ) {
 			Awana_Logger::warning(
@@ -60,8 +60,8 @@ class Awana_CRM_Webhook {
 	 * @param array    $payment_data Payment data.
 	 */
 	public static function notify_invoice_paid( $order, $payment_data = array() ) {
-		$invoice_id = $order->get_meta( '_digital_invoice_id' );
-		$member_id  = $order->get_meta( '_digital_member_id' );
+		$invoice_id = $order->get_meta( 'crm_invoice_id' );
+		$member_id  = $order->get_meta( 'crm_member_id' );
 
 		if ( empty( $invoice_id ) || empty( $member_id ) ) {
 			Awana_Logger::warning(

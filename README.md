@@ -59,10 +59,9 @@ Content-Type: application/json
     {
       "productId": 3102,
       "quantity": 1,
-      "unitPrice": 1657,
+      "description": "Medlemskontingent 2025 - lisens undervisningsbøker (oppgradering)",
       "vatRate": 0,
-      "vatCode": "fritatt",
-      "description": "Medlemskontingent 2025 - lisens undervisningsbøker (oppgradering)"
+      "vatCode": "fritatt"
     }
   ]
 }
@@ -179,6 +178,8 @@ The plugin attempts to find products in the following order:
 2. By SKU (if `productId` matches a product SKU)
 
 If a product is not found, the line item is skipped and a warning is logged.
+
+**Pricing:** Product prices are always taken from WooCommerce. The `unitPrice` field is not used - prices are automatically calculated from the WooCommerce product's current price.
 
 ## Notes
 

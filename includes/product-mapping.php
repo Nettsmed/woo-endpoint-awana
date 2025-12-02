@@ -51,18 +51,10 @@ function awana_add_product_line_to_order( $order, $line_data ) {
 		);
 	}
 
-	$quantity   = ! empty( $line_data['quantity'] ) ? absint( $line_data['quantity'] ) : 1;
-	$unit_price = ! empty( $line_data['unitPrice'] ) ? floatval( $line_data['unitPrice'] ) : $product->get_price();
+	$quantity = ! empty( $line_data['quantity'] ) ? absint( $line_data['quantity'] ) : 1;
 
-	// Add product to order
-	$item = $order->add_product(
-		$product,
-		$quantity,
-		array(
-			'subtotal' => $unit_price * $quantity,
-			'total'    => $unit_price * $quantity,
-		)
-	);
+	// Add product to order (WooCommerce will use product's price automatically)
+	$item = $order->add_product( $product, $quantity );
 
 	// Store VAT information in line item meta if provided
 	if ( ! empty( $line_data['vatRate'] ) ) {

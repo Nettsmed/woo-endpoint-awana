@@ -29,7 +29,7 @@ function awana_find_order_by_invoice_id( $invoice_id ) {
 	$orders = wc_get_orders(
 		array(
 			'limit'      => 1,
-			'meta_key'   => '_digital_invoice_id',
+			'meta_key'   => 'crm_invoice_id',
 			'meta_value' => $invoice_id,
 			'return'     => 'ids',
 		)
