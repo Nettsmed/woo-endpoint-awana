@@ -102,13 +102,14 @@ class Awana_Order_Handler {
 		$order->set_customer_id( 0 );
 
 		// Set billing information
-		$billing_name = ! empty( $data['organizationName'] ) ? $data['organizationName'] : ( $data['memberName'] ?? '' );
-		$name_parts   = awana_split_name( $billing_name );
+		// Use firstName and lastName only (no fallbacks)
+		$billing_first_name = $data['firstName'] ?? '';
+		$billing_last_name = $data['lastName'] ?? '';
 
 		$order->set_billing_email( $data['email'] );
-		$order->set_billing_first_name( $name_parts['first'] );
-		$order->set_billing_last_name( $name_parts['last'] );
-		$order->set_billing_company( ! empty( $data['organizationName'] ) ? $data['organizationName'] : '' );
+		$order->set_billing_first_name( $billing_first_name );
+		$order->set_billing_last_name( $billing_last_name );
+		$order->set_billing_company( ! empty( $data['customerName'] ) ? $data['customerName'] : '' );
 
 		// Extract address from shippingLines if available
 		$shipping_address = null;
@@ -116,17 +117,19 @@ class Awana_Order_Handler {
 			$shipping_address = $data['shippingLines'][0];
 		}
 
-		// Set country code - prefer shippingLines, then countryId, default to NO (Norway)
+		// Set country code - prefer shippingLines, then countryId, always default to NO (Norway)
 		$country_code = 'NO';
 		if ( $shipping_address && ! empty( $shipping_address['country'] ) ) {
-			$country_code = strtoupper( $shipping_address['country'] );
+			$country_from_address = strtoupper( trim( $shipping_address['country'] ) );
+			// Only use if it's a valid country code, otherwise default to NO
+			$country_code = ! empty( $country_from_address ) ? $country_from_address : 'NO';
 		} elseif ( ! empty( $data['countryId'] ) ) {
-			$country_code = strtoupper( $data['countryId'] );
+			$country_from_data = strtoupper( trim( $data['countryId'] ) );
+			// Only use if it's a valid country code, otherwise default to NO
+			$country_code = ! empty( $country_from_data ) ? $country_from_data : 'NO';
 		}
-		// Ensure country is always set (default to NO/Norway)
-		if ( empty( $country_code ) ) {
-			$country_code = 'NO';
-		}
+		// Always ensure country is set to NO (Norway) - this is the default
+		$country_code = ! empty( $country_code ) ? $country_code : 'NO';
 
 		// Set billing address - always set country (defaults to NO/Norway)
 		$order->set_billing_country( $country_code );
@@ -143,9 +146,13 @@ class Awana_Order_Handler {
 		}
 
 		// Set shipping address (same as billing per user requirement)
-		$order->set_shipping_first_name( $name_parts['first'] );
-		$order->set_shipping_last_name( $name_parts['last'] );
-		$order->set_shipping_company( ! empty( $data['organizationName'] ) ? $data['organizationName'] : '' );
+		// Use firstName and lastName only (no fallbacks)
+		$shipping_first_name = $data['firstName'] ?? '';
+		$shipping_last_name = $data['lastName'] ?? '';
+		
+		$order->set_shipping_first_name( $shipping_first_name );
+		$order->set_shipping_last_name( $shipping_last_name );
+		$order->set_shipping_company( ! empty( $data['customerName'] ) ? $data['customerName'] : '' );
 		$order->set_shipping_country( $country_code );
 		if ( $shipping_address ) {
 			if ( ! empty( $shipping_address['address'] ) ) {
