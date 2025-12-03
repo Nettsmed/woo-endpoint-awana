@@ -66,12 +66,16 @@ class Awana_Order_Handler {
 
 		// Set order data
 		self::set_order_customer_data( $order, $data );
-		$line_errors = self::set_order_line_items( $order, $data['invoiceLines'] );
+		$line_errors = self::set_order_line_items( $order, $data['invoiceLines'], $data );
+		
+		// Save order after setting line items to ensure meta is persisted before calculate_totals()
+		$order->save();
+		
 		self::set_order_totals( $order, $data );
 		self::set_order_status( $order, $data );
 		self::set_order_meta( $order, $data );
 
-		// Save order
+		// Save order again after all updates
 		$order->save();
 
 		// Finalize order (convert from placeholder to real order if needed)
@@ -98,23 +102,69 @@ class Awana_Order_Handler {
 		$order->set_customer_id( 0 );
 
 		// Set billing information
-		$billing_name = ! empty( $data['organizationName'] ) ? $data['organizationName'] : ( $data['memberName'] ?? '' );
-		$name_parts   = awana_split_name( $billing_name );
+		// Use firstName and lastName only (no fallbacks)
+		$billing_first_name = $data['firstName'] ?? '';
+		$billing_last_name = $data['lastName'] ?? '';
 
 		$order->set_billing_email( $data['email'] );
-		$order->set_billing_first_name( $name_parts['first'] );
-		$order->set_billing_last_name( $name_parts['last'] );
-		$order->set_billing_company( ! empty( $data['organizationName'] ) ? $data['organizationName'] : '' );
+		$order->set_billing_first_name( $billing_first_name );
+		$order->set_billing_last_name( $billing_last_name );
+		$order->set_billing_company( ! empty( $data['customerName'] ) ? $data['customerName'] : '' );
 
-		// Map country code (no -> NO)
-		$country_code = ! empty( $data['countryId'] ) ? strtoupper( $data['countryId'] ) : 'NO';
+		// Extract address from shippingLines if available
+		$shipping_address = null;
+		if ( ! empty( $data['shippingLines'] ) && is_array( $data['shippingLines'] ) && count( $data['shippingLines'] ) > 0 ) {
+			$shipping_address = $data['shippingLines'][0];
+		}
+
+		// Set country code - prefer shippingLines, then countryId, always default to NO (Norway)
+		$country_code = 'NO';
+		if ( $shipping_address && ! empty( $shipping_address['country'] ) ) {
+			$country_from_address = strtoupper( trim( $shipping_address['country'] ) );
+			// Only use if it's a valid country code, otherwise default to NO
+			$country_code = ! empty( $country_from_address ) ? $country_from_address : 'NO';
+		} elseif ( ! empty( $data['countryId'] ) ) {
+			$country_from_data = strtoupper( trim( $data['countryId'] ) );
+			// Only use if it's a valid country code, otherwise default to NO
+			$country_code = ! empty( $country_from_data ) ? $country_from_data : 'NO';
+		}
+		// Always ensure country is set to NO (Norway) - this is the default
+		$country_code = ! empty( $country_code ) ? $country_code : 'NO';
+
+		// Set billing address - always set country (defaults to NO/Norway)
 		$order->set_billing_country( $country_code );
-		$order->set_shipping_country( $country_code );
+		if ( $shipping_address ) {
+			if ( ! empty( $shipping_address['address'] ) ) {
+				$order->set_billing_address_1( $shipping_address['address'] );
+			}
+			if ( ! empty( $shipping_address['postalCode'] ) ) {
+				$order->set_billing_postcode( $shipping_address['postalCode'] );
+			}
+			if ( ! empty( $shipping_address['postalArea'] ) ) {
+				$order->set_billing_city( $shipping_address['postalArea'] );
+			}
+		}
 
-		// Copy billing to shipping (minimal, as this is an invoice)
-		$order->set_shipping_first_name( $name_parts['first'] );
-		$order->set_shipping_last_name( $name_parts['last'] );
-		$order->set_shipping_company( ! empty( $data['organizationName'] ) ? $data['organizationName'] : '' );
+		// Set shipping address (same as billing per user requirement)
+		// Use firstName and lastName only (no fallbacks)
+		$shipping_first_name = $data['firstName'] ?? '';
+		$shipping_last_name = $data['lastName'] ?? '';
+		
+		$order->set_shipping_first_name( $shipping_first_name );
+		$order->set_shipping_last_name( $shipping_last_name );
+		$order->set_shipping_company( ! empty( $data['customerName'] ) ? $data['customerName'] : '' );
+		$order->set_shipping_country( $country_code );
+		if ( $shipping_address ) {
+			if ( ! empty( $shipping_address['address'] ) ) {
+				$order->set_shipping_address_1( $shipping_address['address'] );
+			}
+			if ( ! empty( $shipping_address['postalCode'] ) ) {
+				$order->set_shipping_postcode( $shipping_address['postalCode'] );
+			}
+			if ( ! empty( $shipping_address['postalArea'] ) ) {
+				$order->set_shipping_city( $shipping_address['postalArea'] );
+			}
+		}
 	}
 
 	/**
@@ -122,9 +172,10 @@ class Awana_Order_Handler {
 	 *
 	 * @param WC_Order $order WooCommerce order object.
 	 * @param array    $invoice_lines Array of invoice line items.
+	 * @param array    $order_data Order-level data (for pricesIncludeTax, etc.).
 	 * @return array Array of errors encountered.
 	 */
-	private static function set_order_line_items( $order, $invoice_lines ) {
+	private static function set_order_line_items( $order, $invoice_lines, $order_data = array() ) {
 		// Remove existing line items if updating
 		if ( $order->get_item_count() > 0 ) {
 			foreach ( $order->get_items() as $item ) {
@@ -136,7 +187,7 @@ class Awana_Order_Handler {
 
 		// Add invoice lines
 		foreach ( $invoice_lines as $line ) {
-			$result = awana_add_product_line_to_order( $order, $line );
+			$result = awana_add_product_line_to_order( $order, $line, $order_data );
 
 			if ( ! $result['success'] ) {
 				$line_errors[] = $result['error'];
@@ -161,7 +212,42 @@ class Awana_Order_Handler {
 		$order->set_payment_method( 'bacs' );
 		$order->set_payment_method_title( 'BACS' );
 
-		// Calculate totals
+		// Reapply custom prices and names after calculate_totals() to ensure they're not overwritten
+		// This must be done after calculate_totals() because it recalculates from product prices
+		$order->calculate_totals();
+		
+		// Reapply custom prices and descriptions from unitPrice if they were set
+		// Get items fresh after calculate_totals() to ensure we have the latest data
+		$items = $order->get_items();
+		foreach ( $items as $item_id => $item ) {
+			// Reapply custom price - set both subtotal and total to unitPrice * quantity
+			// WooCommerce will calculate tax based on product tax settings
+			$custom_price = wc_get_order_item_meta( $item_id, '_awana_custom_price', true );
+			if ( $custom_price ) {
+				$unit_price = floatval( wc_get_order_item_meta( $item_id, '_awana_unit_price', true ) );
+				if ( $unit_price > 0 ) {
+					$quantity = $item->get_quantity();
+					$line_subtotal = $unit_price * $quantity;
+					
+					// Set both subtotal and total to the same value
+					// WooCommerce will add tax to the total if the product has tax
+					$item->set_subtotal( $line_subtotal );
+					$item->set_total( $line_subtotal );
+					
+					// Save the item changes
+					$item->save();
+				}
+			}
+			
+			// Reapply custom name/description
+			$custom_name = wc_get_order_item_meta( $item_id, '_awana_custom_name', true );
+			if ( ! empty( $custom_name ) ) {
+				$item->set_name( $custom_name );
+				$item->save();
+			}
+		}
+		
+		// Recalculate totals after setting custom prices to ensure tax is calculated correctly
 		$order->calculate_totals();
 
 		// Compare with expected total and log if mismatch

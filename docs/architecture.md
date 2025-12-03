@@ -1,3 +1,7 @@
+api key: 
+
+e82d6cde7b414287b63c8b0c2a1e845d 
+
 # A: Overview
 
 This integration connects four systems to manage membership invoices end-to-end:
@@ -53,14 +57,14 @@ The following plan determines the flow of the plugin.
 
 Here we have a couple of conditionals:
 
-- If `_pog_customer_id` already exists in order meta:
+- If `pog_customer_number` already exists in order meta:
     - Integrera links the order to the existing customer in POG.
-- If `_pog_customer_id` is missing:
+- If `_pog_customer_number` is missing:
     - Integrera/POG creates a new customer in POG.
-    - POG returns `pog_customer_id` back to Woo
+    - POG returns `pog_customer_number` back to Woo
     - Woo:
-        - saves `_pog_customer_id` on the order,
-        - triggers webhook/HTTP to CRM so that **CRM updates the org** with the same `pog_customer_id`. We find order by `_crm_invoice_id`.
+        - saves `pog_customer_number` on the order,
+        - triggers webhook/HTTP to CRM so that **CRM updates the org** with the same `pog_customer_number`. We find order by `crm_invoice_id`.
 
 ## 4: When invoice is paid
 
@@ -104,3 +108,13 @@ When the invoice is paid, Integrera reads this back and marks the order as compl
 | invoiceLines | Line items | Yes |
 | memberId | crm_member_id | Yes |
 | organizationId | crm_organization_id |  |
+
+# Tasks
+
+## Task 1: Create meta of orders
+
+```sql
+SELECT *
+FROM wp_wc_orders_meta
+WHERE order_id = 66
+```

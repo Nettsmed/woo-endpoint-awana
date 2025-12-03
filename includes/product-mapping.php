@@ -39,9 +39,10 @@ function awana_find_product( $product_id ) {
  *
  * @param WC_Order $order WooCommerce order object.
  * @param array    $line_data Line item data from Digital system.
+ * @param array    $order_data Optional order-level data (e.g., pricesIncludeTax).
  * @return array Array with 'success' boolean and 'error' message if failed.
  */
-function awana_add_product_line_to_order( $order, $line_data ) {
+function awana_add_product_line_to_order( $order, $line_data, $order_data = array() ) {
 	$product = awana_find_product( $line_data['productId'] ?? null );
 
 	if ( ! $product ) {
@@ -54,21 +55,41 @@ function awana_add_product_line_to_order( $order, $line_data ) {
 	$quantity = ! empty( $line_data['quantity'] ) ? absint( $line_data['quantity'] ) : 1;
 
 	// Add product to order (WooCommerce will use product's price automatically)
-	$item = $order->add_product( $product, $quantity );
+	$item_id = $order->add_product( $product, $quantity );
+	
+	// Handle both cases: add_product() can return item ID (int) or item object
+	if ( is_numeric( $item_id ) ) {
+		$item = $order->get_item( $item_id );
+	} else {
+		$item = $item_id;
+	}
+	
+	// Ensure we have a valid item object
+	if ( ! $item || ! is_a( $item, 'WC_Order_Item_Product' ) ) {
+		return array(
+			'success' => false,
+			'error'   => 'Failed to create order item',
+		);
+	}
 
-	// Store VAT information in line item meta if provided
-	if ( ! empty( $line_data['vatRate'] ) ) {
-		wc_add_order_item_meta( $item->get_id(), '_vat_rate', $line_data['vatRate'] );
+	// Override price with unitPrice from API if provided
+	// Only set the unit price - let WooCommerce handle tax according to its settings
+	if ( isset( $line_data['unitPrice'] ) ) {
+		$unit_price = floatval( $line_data['unitPrice'] );
+		
+		// Store the unit price in meta so we can reapply after calculate_totals()
+		// Use wc_update_order_item_meta for order items to ensure it persists
+		wc_update_order_item_meta( $item->get_id(), '_awana_unit_price', $unit_price );
+		wc_update_order_item_meta( $item->get_id(), '_awana_custom_price', true );
 	}
-	if ( ! empty( $line_data['vatCode'] ) ) {
-		wc_add_order_item_meta( $item->get_id(), '_vat_code', $line_data['vatCode'] );
-	}
-	if ( ! empty( $line_data['vat'] ) ) {
-		wc_add_order_item_meta( $item->get_id(), '_vat_amount', $line_data['vat'] );
-	}
+	
+	// Override product title with description if provided
+	// Store description in meta so we can reapply after calculate_totals()
 	if ( ! empty( $line_data['description'] ) ) {
-		// Update line item name if custom description provided
+		// Update line item name - this overwrites the product title
 		$item->set_name( $line_data['description'] );
+		// Store in meta so we can reapply after calculate_totals()
+		wc_update_order_item_meta( $item->get_id(), '_awana_custom_name', $line_data['description'] );
 	}
 
 	return array(
