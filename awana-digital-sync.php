@@ -35,7 +35,6 @@ include_once 'includes/helpers.php';
 include_once 'includes/product-mapping.php';
 include_once 'includes/class-awana-crm-webhook.php';
 include_once 'includes/class-awana-order-handler.php';
-include_once 'includes/class-awana-sync-handler.php';
 include_once 'includes/class-awana-rest-controller.php';
 
 // Initialize the plugin

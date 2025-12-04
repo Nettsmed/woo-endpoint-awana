@@ -15,45 +15,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Awana_CRM_Webhook {
 
 	/**
-	 * Send webhook to CRM when POG customer is created/updated
-	 *
-	 * @param WC_Order $order WooCommerce order object.
-	 * @param mixed    $pog_customer_number POG customer number.
-	 */
-	public static function notify_pog_customer_created( $order, $pog_customer_number ) {
-		$invoice_id = $order->get_meta( 'crm_invoice_id' );
-		$member_id  = $order->get_meta( 'crm_member_id' );
-
-		if ( empty( $invoice_id ) || empty( $member_id ) ) {
-			Awana_Logger::warning(
-				'Cannot send POG customer webhook - missing invoice_id or member_id',
-				array(
-					'order_id' => $order->get_id(),
-					'invoice_id' => $invoice_id,
-					'member_id' => $member_id,
-				)
-			);
-			return false;
-		}
-
-		$webhook_url = self::get_crm_webhook_url();
-		if ( empty( $webhook_url ) ) {
-			Awana_Logger::warning( 'CRM webhook URL not configured', array( 'order_id' => $order->get_id() ) );
-			return false;
-		}
-
-		$payload = array(
-			'invoiceId'         => $invoice_id,
-			'memberId'          => $member_id,
-			'pogCustomerNumber' => $pog_customer_number,
-			'event'             => 'pog_customer_created',
-			'timestamp'         => current_time( 'mysql' ),
-		);
-
-		return self::send_webhook( $webhook_url, $payload, 'POG customer created' );
-	}
-
-	/**
 	 * Send webhook to CRM when invoice is paid
 	 *
 	 * @param WC_Order $order WooCommerce order object.

@@ -35,16 +35,6 @@ class Awana_REST_Controller {
 				'permission_callback' => array( $this, 'check_api_key' ),
 			)
 		);
-
-		register_rest_route(
-			'awana/v1',
-			'/invoice-sync',
-			array(
-				'methods'             => 'POST',
-				'callback'            => array( $this, 'handle_invoice_sync' ),
-				'permission_callback' => array( $this, 'check_api_key' ),
-			)
-		);
 	}
 
 	/**
@@ -125,27 +115,6 @@ class Awana_REST_Controller {
 		}
 
 		return new WP_REST_Response( $response_data, 200 );
-	}
-
-	/**
-	 * Handle invoice sync from POG/Integrera
-	 *
-	 * @param WP_REST_Request $request Request object.
-	 * @return WP_REST_Response|WP_Error
-	 */
-	public function handle_invoice_sync( $request ) {
-		$data = $request->get_json_params();
-
-		Awana_Logger::info( 'Invoice sync received', array( 'invoice_id' => $data['invoiceId'] ?? 'unknown' ) );
-
-		// Handle sync
-		$result = Awana_Sync_Handler::handle_sync( $data );
-
-		if ( is_wp_error( $result ) ) {
-			return $result;
-		}
-
-		return new WP_REST_Response( $result, 200 );
 	}
 }
 
