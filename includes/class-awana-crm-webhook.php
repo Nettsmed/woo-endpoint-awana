@@ -78,20 +78,25 @@ class Awana_CRM_Webhook {
 			return false;
 		}
 
-		// Get webhook URL from constant or use fallback
-		$webhook_url = defined( 'AWANA_POG_CUSTOMER_WEBHOOK_URL' ) 
-			? AWANA_POG_CUSTOMER_WEBHOOK_URL 
-			: 'https://invoicecustomernumberwebhook-mrjqvmos7a-ey.a.run.app/';
-
-		if ( empty( $webhook_url ) ) {
-			Awana_Logger::warning( 'POG customer webhook URL not configured', array( 'order_id' => $order->get_id() ) );
+		// Get webhook URL from wp-config.php constant (required)
+		if ( ! defined( 'AWANA_POG_CUSTOMER_WEBHOOK_URL' ) || empty( AWANA_POG_CUSTOMER_WEBHOOK_URL ) ) {
+			Awana_Logger::error(
+				'POG customer webhook URL not configured - AWANA_POG_CUSTOMER_WEBHOOK_URL must be defined in wp-config.php',
+				array( 'order_id' => $order->get_id() )
+			);
 			return false;
 		}
+		$webhook_url = AWANA_POG_CUSTOMER_WEBHOOK_URL;
 
-		// Get API key from constant or use fallback
-		$api_key = defined( 'AWANA_POG_CUSTOMER_WEBHOOK_API_KEY' )
-			? AWANA_POG_CUSTOMER_WEBHOOK_API_KEY
-			: 'e82d6cde7b414287b63c8b0c2a1e845d';
+		// Get API key from wp-config.php constant (required)
+		if ( ! defined( 'AWANA_POG_CUSTOMER_WEBHOOK_API_KEY' ) || empty( AWANA_POG_CUSTOMER_WEBHOOK_API_KEY ) ) {
+			Awana_Logger::error(
+				'POG customer webhook API key not configured - AWANA_POG_CUSTOMER_WEBHOOK_API_KEY must be defined in wp-config.php',
+				array( 'order_id' => $order->get_id() )
+			);
+			return false;
+		}
+		$api_key = AWANA_POG_CUSTOMER_WEBHOOK_API_KEY;
 
 		$payload = array(
 			'invoiceId'         => $invoice_id,
