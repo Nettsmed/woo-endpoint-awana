@@ -92,6 +92,14 @@ function awana_add_product_line_to_order( $order, $line_data, $order_data = arra
 		wc_update_order_item_meta( $item->get_id(), 'crm_custom_name', $line_data['description'] );
 	}
 
+	// Copy pog_product_id from product meta to order line item meta
+	// so Integrera gets it per purchased product (same as checkout hook)
+	$pog_product_id = get_post_meta( $product->get_id(), 'pog_product_id', true );
+	if ( ! empty( $pog_product_id ) ) {
+		$item->add_meta_data( 'pog_product_id', $pog_product_id, true );
+		$item->save();
+	}
+
 	return array(
 		'success' => true,
 		'item'    => $item,
