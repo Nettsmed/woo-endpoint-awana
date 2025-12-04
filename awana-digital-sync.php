@@ -67,21 +67,23 @@ add_action( 'updated_postmeta', function( $meta_id, $object_id, $meta_key, $meta
 	// Check if we've already synced this POG customer number to CRM
 	$last_synced_pog_number = $order->get_meta( '_pog_customer_synced_to_crm', true );
 	
-	// If this value was already synced, skip
+	// If this value was already synced, skip (prevent duplicate webhooks)
 	if ( $last_synced_pog_number === $meta_value ) {
 		return;
 	}
 
-	// If there's no previous sync record, this is likely a new customer
-	// (Integrera just created them in POG)
-	$is_new_customer = empty( $last_synced_pog_number );
-
-	if ( $is_new_customer && ! empty( $meta_value ) ) {
+	// If the value changed and is not empty, sync to CRM
+	if ( ! empty( $meta_value ) ) {
+		$is_new_customer = empty( $last_synced_pog_number );
+		
 		Awana_Logger::info(
-			'POG customer number updated by Integrera - syncing to CRM',
+			$is_new_customer 
+				? 'POG customer number updated by Integrera - syncing to CRM'
+				: 'POG customer number changed - syncing update to CRM',
 			array(
 				'order_id'           => $object_id,
 				'pog_customer_number' => $meta_value,
+				'previous_value'     => $last_synced_pog_number,
 			)
 		);
 
@@ -110,25 +112,26 @@ add_action( 'woocommerce_after_order_object_save', function( $order ) {
 	$current_pog_number = $order->get_meta( 'pog_customer_number', true );
 	$last_synced = $order->get_meta( '_pog_customer_synced_to_crm', true );
 	
-	// If we have a POG number that hasn't been synced yet
+	// If we have a POG number that hasn't been synced yet (different value)
 	if ( ! empty( $current_pog_number ) && $last_synced !== $current_pog_number ) {
 		$is_new_customer = empty( $last_synced );
 		
-		if ( $is_new_customer ) {
-			Awana_Logger::info(
-				'New POG customer detected on order save - syncing to CRM',
-				array(
-					'order_id'           => $order->get_id(),
-					'pog_customer_number' => $current_pog_number,
-				)
-			);
+		Awana_Logger::info(
+			$is_new_customer
+				? 'New POG customer detected on order save - syncing to CRM'
+				: 'POG customer number changed on order save - syncing update to CRM',
+			array(
+				'order_id'           => $order->get_id(),
+				'pog_customer_number' => $current_pog_number,
+				'previous_value'     => $last_synced,
+			)
+		);
 
-			Awana_CRM_Webhook::notify_pog_customer_number_to_crm( $order, $current_pog_number );
-			
-			// Mark as synced
-			$order->update_meta_data( '_pog_customer_synced_to_crm', $current_pog_number );
-			$order->save();
-		}
+		Awana_CRM_Webhook::notify_pog_customer_number_to_crm( $order, $current_pog_number );
+		
+		// Mark as synced
+		$order->update_meta_data( '_pog_customer_synced_to_crm', $current_pog_number );
+		$order->save();
 	}
 }, 10, 1 );
 
