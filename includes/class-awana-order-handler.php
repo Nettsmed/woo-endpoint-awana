@@ -210,7 +210,7 @@ class Awana_Order_Handler {
 
 		// Set payment method
 		$order->set_payment_method( 'bacs' );
-		$order->set_payment_method_title( 'BACS' );
+		$order->set_payment_method_title( 'Faktura' );
 
 		// Reapply custom prices and names after calculate_totals() to ensure they're not overwritten
 		// This must be done after calculate_totals() because it recalculates from product prices
@@ -222,9 +222,9 @@ class Awana_Order_Handler {
 		foreach ( $items as $item_id => $item ) {
 			// Reapply custom price - set both subtotal and total to unitPrice * quantity
 			// WooCommerce will calculate tax based on product tax settings
-			$custom_price = wc_get_order_item_meta( $item_id, '_awana_custom_price', true );
+			$custom_price = wc_get_order_item_meta( $item_id, 'crm_custom_price', true );
 			if ( $custom_price ) {
-				$unit_price = floatval( wc_get_order_item_meta( $item_id, '_awana_unit_price', true ) );
+				$unit_price = floatval( wc_get_order_item_meta( $item_id, 'crm_unit_price', true ) );
 				if ( $unit_price > 0 ) {
 					$quantity = $item->get_quantity();
 					$line_subtotal = $unit_price * $quantity;
@@ -240,7 +240,7 @@ class Awana_Order_Handler {
 			}
 			
 			// Reapply custom name/description
-			$custom_name = wc_get_order_item_meta( $item_id, '_awana_custom_name', true );
+			$custom_name = wc_get_order_item_meta( $item_id, 'crm_custom_name', true );
 			if ( ! empty( $custom_name ) ) {
 				$item->set_name( $custom_name );
 				$item->save();
