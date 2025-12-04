@@ -47,3 +47,24 @@ add_action( 'before_woocommerce_init', function() {
 		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
 	}
 } );
+
+/**
+ * Copy pog_product_id from product meta to order line item meta
+ * so Integrera gets it per purchased product.
+ * This works for both checkout orders and API-created orders.
+ */
+add_action( 'woocommerce_checkout_create_order_line_item', function( $item, $cart_item_key, $values, $order ) {
+	$product = $item->get_product();
+
+	if ( ! $product ) {
+		return;
+	}
+
+	// Read POG product id from product meta
+	$pog_product_id = get_post_meta( $product->get_id(), 'pog_product_id', true );
+
+	if ( ! empty( $pog_product_id ) ) {
+		// Attach to line item meta with same key Integrera should read
+		$item->add_meta_data( 'pog_product_id', $pog_product_id, true );
+	}
+}, 10, 4 );

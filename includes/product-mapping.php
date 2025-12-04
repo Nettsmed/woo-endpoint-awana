@@ -79,8 +79,8 @@ function awana_add_product_line_to_order( $order, $line_data, $order_data = arra
 		
 		// Store the unit price in meta so we can reapply after calculate_totals()
 		// Use wc_update_order_item_meta for order items to ensure it persists
-		wc_update_order_item_meta( $item->get_id(), '_awana_unit_price', $unit_price );
-		wc_update_order_item_meta( $item->get_id(), '_awana_custom_price', true );
+		wc_update_order_item_meta( $item->get_id(), 'crm_unit_price', $unit_price );
+		wc_update_order_item_meta( $item->get_id(), 'crm_custom_price', true );
 	}
 	
 	// Override product title with description if provided
@@ -89,7 +89,15 @@ function awana_add_product_line_to_order( $order, $line_data, $order_data = arra
 		// Update line item name - this overwrites the product title
 		$item->set_name( $line_data['description'] );
 		// Store in meta so we can reapply after calculate_totals()
-		wc_update_order_item_meta( $item->get_id(), '_awana_custom_name', $line_data['description'] );
+		wc_update_order_item_meta( $item->get_id(), 'crm_custom_name', $line_data['description'] );
+	}
+
+	// Copy pog_product_id from product meta to order line item meta
+	// so Integrera gets it per purchased product (same as checkout hook)
+	$pog_product_id = get_post_meta( $product->get_id(), 'pog_product_id', true );
+	if ( ! empty( $pog_product_id ) ) {
+		$item->add_meta_data( 'pog_product_id', $pog_product_id, true );
+		$item->save();
 	}
 
 	return array(
