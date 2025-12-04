@@ -344,6 +344,8 @@ class Awana_Order_Handler {
 
 		if ( ! empty( $data['pogCustomerNumber'] ) ) {
 			$order->update_meta_data( 'pog_customer_number', $data['pogCustomerNumber'] );
+			// Mark as already synced since it came from CRM API (CRM already knows about it)
+			$order->update_meta_data( '_pog_customer_synced_to_crm', $data['pogCustomerNumber'] );
 		}
 	}
 }
