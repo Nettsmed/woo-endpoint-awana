@@ -320,6 +320,36 @@ class Awana_Order_Handler {
 	}
 
 	/**
+	 * Convert camelCase to snake_case
+	 *
+	 * @param string $input CamelCase string.
+	 * @return string Snake_case string.
+	 */
+	private static function camel_to_snake( $input ) {
+		return strtolower( preg_replace( '/([a-z])([A-Z])/', '$1_$2', $input ) );
+	}
+
+	/**
+	 * Get value from data array, checking camelCase first, then snake_case for backward compatibility
+	 *
+	 * @param array  $data Data array.
+	 * @param string $camel_key CamelCase key.
+	 * @return mixed|null Value if found, null otherwise.
+	 */
+	private static function get_field_value( $data, $camel_key ) {
+		// Check camelCase first
+		if ( isset( $data[ $camel_key ] ) ) {
+			return $data[ $camel_key ];
+		}
+		// Fall back to snake_case for backward compatibility
+		$snake_key = self::camel_to_snake( $camel_key );
+		if ( isset( $data[ $snake_key ] ) ) {
+			return $data[ $snake_key ];
+		}
+		return null;
+	}
+
+	/**
 	 * Set order meta data
 	 *
 	 * @param WC_Order $order WooCommerce order object.
@@ -348,18 +378,25 @@ class Awana_Order_Handler {
 			$order->update_meta_data( '_pog_customer_synced_to_crm', $data['pogCustomerNumber'] );
 		}
 
-		// Store POG custom fields from invoice
-		if ( isset( $data['pog_department_id'] ) && is_numeric( $data['pog_department_id'] ) ) {
-			$order->update_meta_data( 'pog_department_id', intval( $data['pog_department_id'] ) );
+		// Store POG custom fields from invoice (accept camelCase, store as snake_case)
+		$pog_department_id = self::get_field_value( $data, 'pogDepartmentId' );
+		if ( isset( $pog_department_id ) && is_numeric( $pog_department_id ) ) {
+			$order->update_meta_data( 'pog_department_id', intval( $pog_department_id ) );
 		}
-		if ( ! empty( $data['pog_our_reference'] ) ) {
-			$order->update_meta_data( 'pog_our_reference', sanitize_text_field( $data['pog_our_reference'] ) );
+		
+		$pog_our_reference = self::get_field_value( $data, 'pogOurReference' );
+		if ( ! empty( $pog_our_reference ) ) {
+			$order->update_meta_data( 'pog_our_reference', sanitize_text_field( $pog_our_reference ) );
 		}
-		if ( ! empty( $data['pog_your_reference'] ) ) {
-			$order->update_meta_data( 'pog_your_reference', sanitize_text_field( $data['pog_your_reference'] ) );
+		
+		$pog_your_reference = self::get_field_value( $data, 'pogYourReference' );
+		if ( ! empty( $pog_your_reference ) ) {
+			$order->update_meta_data( 'pog_your_reference', sanitize_text_field( $pog_your_reference ) );
 		}
-		if ( isset( $data['pog_our_reference_id'] ) && is_numeric( $data['pog_our_reference_id'] ) ) {
-			$order->update_meta_data( 'pog_our_reference_id', intval( $data['pog_our_reference_id'] ) );
+		
+		$pog_our_reference_id = self::get_field_value( $data, 'pogOurReferenceId' );
+		if ( isset( $pog_our_reference_id ) && is_numeric( $pog_our_reference_id ) ) {
+			$order->update_meta_data( 'pog_our_reference_id', intval( $pog_our_reference_id ) );
 		}
 	}
 }
