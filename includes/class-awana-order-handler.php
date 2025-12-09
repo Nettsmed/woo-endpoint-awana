@@ -349,16 +349,16 @@ class Awana_Order_Handler {
 		}
 
 		// Store POG custom fields from invoice
-		if ( isset( $data['pog_department_id'] ) && is_numeric( $data['pog_department_id'] ) ) {
+		if ( isset( $data['pogDepartmentId'] ) && is_numeric( $data['pog_department_id'] ) ) {
 			$order->update_meta_data( 'pog_department_id', intval( $data['pog_department_id'] ) );
 		}
-		if ( ! empty( $data['pog_our_reference'] ) ) {
+		if ( ! empty( $data['pogOurReference'] ) ) {
 			$order->update_meta_data( 'pog_our_reference', sanitize_text_field( $data['pog_our_reference'] ) );
 		}
-		if ( ! empty( $data['pog_your_reference'] ) ) {
+		if ( ! empty( $data['pogYourReference'] ) ) {
 			$order->update_meta_data( 'pog_your_reference', sanitize_text_field( $data['pog_your_reference'] ) );
 		}
-		if ( isset( $data['pog_our_reference_id'] ) && is_numeric( $data['pog_our_reference_id'] ) ) {
+		if ( isset( $data['pogOurReferenceId'] ) && is_numeric( $data['pog_our_reference_id'] ) ) {
 			$order->update_meta_data( 'pog_our_reference_id', intval( $data['pog_our_reference_id'] ) );
 		}
 	}
