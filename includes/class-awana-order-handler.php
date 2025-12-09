@@ -347,6 +347,20 @@ class Awana_Order_Handler {
 			// Mark as already synced since it came from CRM API (CRM already knows about it)
 			$order->update_meta_data( '_pog_customer_synced_to_crm', $data['pogCustomerNumber'] );
 		}
+
+		// Store POG custom fields from invoice
+		if ( isset( $data['pog_department_id'] ) && is_numeric( $data['pog_department_id'] ) ) {
+			$order->update_meta_data( 'pog_department_id', intval( $data['pog_department_id'] ) );
+		}
+		if ( ! empty( $data['pog_our_reference'] ) ) {
+			$order->update_meta_data( 'pog_our_reference', sanitize_text_field( $data['pog_our_reference'] ) );
+		}
+		if ( ! empty( $data['pog_your_reference'] ) ) {
+			$order->update_meta_data( 'pog_your_reference', sanitize_text_field( $data['pog_your_reference'] ) );
+		}
+		if ( isset( $data['pog_our_reference_id'] ) && is_numeric( $data['pog_our_reference_id'] ) ) {
+			$order->update_meta_data( 'pog_our_reference_id', intval( $data['pog_our_reference_id'] ) );
+		}
 	}
 }
 
