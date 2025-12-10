@@ -349,22 +349,25 @@ class Awana_Order_Handler {
 		}
 
 		// Store POG custom fields from invoice
-		// Department should be CODE (string), not ID (integer)
+		// Department ID field must contain CODE (string), not ID (integer) - Integrera requirement
+		$department_code = null;
 		if ( ! empty( $data['pogDepartmentCode'] ) ) {
-			$order->update_meta_data( 'pog_department_code', sanitize_text_field( $data['pogDepartmentCode'] ) );
-		}
-		// Support legacy pogDepartmentId field but convert to code format
-		if ( ! empty( $data['pogDepartmentId'] ) && empty( $data['pogDepartmentCode'] ) ) {
-			// If it's numeric, treat as ID and log warning; otherwise treat as code
+			$department_code = sanitize_text_field( $data['pogDepartmentCode'] );
+		} elseif ( ! empty( $data['pogDepartmentId'] ) ) {
+			// If numeric, it's an ID - log warning and don't store (Integrera needs code, not ID)
 			if ( is_numeric( $data['pogDepartmentId'] ) ) {
 				Awana_Logger::warning(
-					'pogDepartmentId received but pogDepartmentCode expected - please update CRM to send department code',
+					'pogDepartmentId received as numeric ID - Integrera requires department CODE (string). Please update CRM to send pogDepartmentCode.',
 					array( 'pogDepartmentId' => $data['pogDepartmentId'] )
 				);
 			} else {
 				// If it's already a string/code, use it
-				$order->update_meta_data( 'pog_department_code', sanitize_text_field( $data['pogDepartmentId'] ) );
+				$department_code = sanitize_text_field( $data['pogDepartmentId'] );
 			}
+		}
+		// Store as pog_department_id (field name Integrera reads) but with code value (string)
+		if ( ! empty( $department_code ) ) {
+			$order->update_meta_data( 'pog_department_id', $department_code );
 		}
 		// Our reference should be employee code (string)
 		if ( ! empty( $data['pogOurReference'] ) ) {
