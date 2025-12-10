@@ -349,14 +349,32 @@ class Awana_Order_Handler {
 		}
 
 		// Store POG custom fields from invoice
-		if ( isset( $data['pogDepartmentId'] ) && is_numeric( $data['pogDepartmentId'] ) ) {
-			$order->update_meta_data( 'pog_department_id', intval( $data['pogDepartmentId'] ) );
+		// Department should be CODE (string), not ID (integer)
+		if ( ! empty( $data['pogDepartmentCode'] ) ) {
+			$order->update_meta_data( 'pog_department_code', sanitize_text_field( $data['pogDepartmentCode'] ) );
 		}
+		// Support legacy pogDepartmentId field but convert to code format
+		if ( ! empty( $data['pogDepartmentId'] ) && empty( $data['pogDepartmentCode'] ) ) {
+			// If it's numeric, treat as ID and log warning; otherwise treat as code
+			if ( is_numeric( $data['pogDepartmentId'] ) ) {
+				Awana_Logger::warning(
+					'pogDepartmentId received but pogDepartmentCode expected - please update CRM to send department code',
+					array( 'pogDepartmentId' => $data['pogDepartmentId'] )
+				);
+			} else {
+				// If it's already a string/code, use it
+				$order->update_meta_data( 'pog_department_code', sanitize_text_field( $data['pogDepartmentId'] ) );
+			}
+		}
+		// Our reference should be employee code (string)
 		if ( ! empty( $data['pogOurReference'] ) ) {
 			$order->update_meta_data( 'pog_our_reference', sanitize_text_field( $data['pogOurReference'] ) );
 		}
+		// Your reference must be string format
 		if ( ! empty( $data['pogYourReference'] ) ) {
-			$order->update_meta_data( 'pog_your_reference', sanitize_text_field( $data['pogYourReference'] ) );
+			// Ensure it's always stored as string, even if numeric
+			$your_ref = is_numeric( $data['pogYourReference'] ) ? strval( $data['pogYourReference'] ) : $data['pogYourReference'];
+			$order->update_meta_data( 'pog_your_reference', sanitize_text_field( $your_ref ) );
 		}
 		if ( isset( $data['pogOurReferenceId'] ) && is_numeric( $data['pogOurReferenceId'] ) ) {
 			$order->update_meta_data( 'pog_our_reference_id', intval( $data['pogOurReferenceId'] ) );
