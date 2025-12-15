@@ -1,7 +1,3 @@
-api key: 
-
-e82d6cde7b414287b63c8b0c2a1e845d 
-
 # A: Overview
 
 This integration connects four systems to manage membership invoices end-to-end:
@@ -64,13 +60,23 @@ Here we have a couple of conditionals:
     - POG returns `pog_customer_number` back to Woo
     - Woo:
         - saves `pog_customer_number` on the order,
-        - triggers webhook/HTTP to CRM so that **CRM updates the org** with the same `pog_customer_number`. We find order by `crm_invoice_id`.
+        - triggers webhook/HTTP to CRM so that **CRM updates the org** with the same `pog_customer_number`. We find invoice by `crm_invoice_id`.
+
+### 3b: Integrera updates invoice status + references (KID / invoice number)
+
+Integrera/POG can also write back status and reference fields on the Woo order:
+
+- `pog_status` (e.g. `order` or `invoice`)
+- `pog_kid_number` (KID)
+- `pog_invoice_number` (invoice number)
+
+When these meta fields change, Woo triggers a second webhook to CRM so CRM can update invoice status + references.
 
 ## 4: When invoice is paid
 
 When the invoice is paid, Integrera reads this back and marks the order as completed. Woo sends that information back to CRM.
 
-# D: API endpoints
+# D: Inbound API endpoints (CRM → Woo)
 
 **1) `/awana/v1/invoice`**
 
@@ -84,17 +90,40 @@ When the invoice is paid, Integrera reads this back and marks the order as compl
     - `wooOrderId`, `status`, etc.
 - Idempotency rule: same `invoiceId` = update existing order.
 
-**2) `/awana/v1/invoice-sync`**
+# E: Outbound webhooks (Woo → CRM)
 
-- Method: `POST`
-- Auth: same
-- Purpose:
-    - update `pog_customer_id`
-    - update payment status (`paid`, `amountPaid`)
-- Input schemas for:
-    - `updatePogCustomerNumber`
-    - `updateInvoiceStatus`
-- Output: confirmation + `wooOrderId`.
+Woo sends two different webhooks depending on which POG fields changed:
+
+**1) invoiceCustomerNumberWebhook**
+
+- Purpose: sync `pog_customer_number` to CRM.
+- Trigger: Woo order meta `pog_customer_number` changed.
+- Config:
+  - `AWANA_POG_CUSTOMER_WEBHOOK_URL` (required)
+  - `AWANA_POG_CUSTOMER_WEBHOOK_API_KEY` (required; sent as `x-api-key`)
+- Payload:
+  - `invoiceId`
+  - `pog_customer_number`
+
+**2) invoiceStatusWebhook**
+
+- Purpose: sync invoice status + references (KID / invoice number) to CRM.
+- Trigger: Woo order meta `pog_status`, `pog_kid_number`, or `pog_invoice_number` changed.
+- Config:
+  - `AWANA_INVOICE_STATUS_WEBHOOK_URL` (required)
+  - `AWANA_INVOICE_STATUS_WEBHOOK_API_KEY` (optional; sent as `x-api-key` if defined)
+- Payload:
+  - `invoiceId` (required)
+  - `kid` (optional; from `pog_kid_number`)
+  - `pogInvoiceNumber` + `invoiceNumber` (optional; from `pog_invoice_number`)
+  - `status` (optional; mapped from `pog_status`)
+
+Status mapping:
+- `pog_status=order` → `status=pending`
+- `pog_status=invoice` → `status=unpaid`
+
+Deduplication:
+- Woo stores `_pog_*_synced_to_crm` meta keys per field to avoid sending the same value repeatedly, even if the order is saved multiple times (or when both `updated_postmeta` and HPOS save hooks fire).
 
 # E: Field mapping
 

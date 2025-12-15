@@ -65,7 +65,29 @@ if ( defined( 'WP_ENVIRONMENT_TYPE' ) ) {
 }
 ```
 
-## 4. Test the Endpoint
+## 4. Configure Outbound Webhooks (Woo → CRM)
+
+Integrera/POG writes POG fields back to the Woo order as meta. This plugin detects changes and sends outbound webhooks back to CRM.
+
+Add the following to your `wp-config.php` file (before the "That's all, stop editing!" line):
+
+```php
+// 1) invoiceCustomerNumberWebhook (required)
+define( 'AWANA_POG_CUSTOMER_WEBHOOK_URL', 'https://invoicecustomernumberwebhook-<...>/' );
+define( 'AWANA_POG_CUSTOMER_WEBHOOK_API_KEY', '<x-api-key>' );
+
+// 2) invoiceStatusWebhook (required URL; API key optional)
+define( 'AWANA_INVOICE_STATUS_WEBHOOK_URL', 'https://invoicestatuswebhook-<...>/' );
+
+// Reuse the same key as customer number webhook, or set a different one
+define( 'AWANA_INVOICE_STATUS_WEBHOOK_API_KEY', '<x-api-key>' );
+```
+
+Notes:
+- `AWANA_POG_CUSTOMER_WEBHOOK_API_KEY` is required (customer number webhook always uses `x-api-key`).
+- `AWANA_INVOICE_STATUS_WEBHOOK_API_KEY` is optional; if you don’t define it, the plugin will send without `x-api-key`.
+
+## 5. Test the Endpoint
 
 You can test the endpoint using curl:
 
@@ -89,15 +111,14 @@ curl -X POST https://your-site.com/wp-json/awana/v1/invoice \
   }'
 ```
 
-## 5. Configure Firebase/Integrera
+## 6. Configure Firebase/Integrera
 
 Update your Firebase functions and Integrera integration to use:
 
 - **Endpoint URL:** `https://your-site.com/wp-json/awana/v1/invoice`
-- **Sync Endpoint:** `https://your-site.com/wp-json/awana/v1/invoice-sync`
 - **API Key Header:** `X-CRM-API-Key: your-api-key`
 
-## 6. Verify Logging
+## 7. Verify Logging
 
 Check that logs are being created:
 
