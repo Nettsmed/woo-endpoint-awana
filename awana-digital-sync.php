@@ -3,7 +3,7 @@
  * Plugin Name: Awana Digital Sync
  * Plugin URI: https://awana.no
  * Description: Syncs invoices from Digital/CRM to WooCommerce as guest orders and handles POG/Integrera sync updates.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Awana
  * Author URI: https://awana.no
  * Requires at least: 5.8
