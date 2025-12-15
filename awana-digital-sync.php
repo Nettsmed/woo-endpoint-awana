@@ -103,8 +103,12 @@ add_action( 'updated_postmeta', function( $meta_id, $object_id, $meta_key, $meta
 			)
 		);
 
-		// Send a full snapshot payload to the webhook receiver
-		Awana_CRM_Webhook::notify_pog_sync_to_crm( $order, 'POG meta sync' );
+		// Send to correct webhook endpoint depending on field
+		if ( $meta_key === 'pog_customer_number' ) {
+			Awana_CRM_Webhook::notify_pog_customer_number_to_crm( $order, $meta_value );
+		} else {
+			Awana_CRM_Webhook::notify_invoice_status_to_crm( $order, 'Invoice status sync (meta update)' );
+		}
 
 		// Mark as synced to prevent duplicate webhooks
 		$order->update_meta_data( $synced_meta_key, $meta_value );
@@ -133,6 +137,8 @@ add_action( 'woocommerce_after_order_object_save', function( $order ) {
 	);
 
 	$changes_to_mark = array();
+	$should_send_customer_number_webhook = false;
+	$should_send_invoice_status_webhook  = false;
 
 	foreach ( $pog_fields as $meta_key => $synced_meta_key ) {
 		$current_value = $order->get_meta( $meta_key, true );
@@ -140,20 +146,35 @@ add_action( 'woocommerce_after_order_object_save', function( $order ) {
 
 		if ( ! empty( $current_value ) && (string) $last_synced !== (string) $current_value ) {
 			$changes_to_mark[ $synced_meta_key ] = $current_value;
+
+			if ( $meta_key === 'pog_customer_number' ) {
+				$should_send_customer_number_webhook = true;
+			} else {
+				$should_send_invoice_status_webhook = true;
+			}
 		}
 	}
 
-	// If anything changed, send one snapshot webhook and mark all changed fields as synced
+	// If anything changed, send relevant webhook(s) and mark all changed fields as synced
 	if ( ! empty( $changes_to_mark ) ) {
 		Awana_Logger::info(
-			'POG meta changed on order save - syncing snapshot to CRM',
+			'POG meta changed on order save - syncing to CRM',
 			array(
 				'order_id' => $order->get_id(),
 				'changed_synced_meta_keys' => array_keys( $changes_to_mark ),
 			)
 		);
 
-		Awana_CRM_Webhook::notify_pog_sync_to_crm( $order, 'POG meta sync (order save)' );
+		if ( $should_send_customer_number_webhook ) {
+			$current_pog_customer_number = $order->get_meta( 'pog_customer_number', true );
+			if ( ! empty( $current_pog_customer_number ) ) {
+				Awana_CRM_Webhook::notify_pog_customer_number_to_crm( $order, $current_pog_customer_number );
+			}
+		}
+
+		if ( $should_send_invoice_status_webhook ) {
+			Awana_CRM_Webhook::notify_invoice_status_to_crm( $order, 'Invoice status sync (order save)' );
+		}
 
 		foreach ( $changes_to_mark as $synced_meta_key => $value ) {
 			$order->update_meta_data( $synced_meta_key, $value );

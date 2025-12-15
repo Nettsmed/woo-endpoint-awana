@@ -56,20 +56,115 @@ class Awana_CRM_Webhook {
 	}
 
 	/**
-	 * Send webhook to CRM when Integrera updates POG fields
-	 * Sends a snapshot payload containing POG customer number, invoice number, kid and mapped status (if available).
+	 * Send webhook to invoiceStatusWebhook when Integrera updates POG status-related fields.
+	 * Sends payload containing invoiceId and any of: kid, pogInvoiceNumber/invoiceNumber and mapped status.
 	 *
 	 * @param WC_Order $order WooCommerce order object.
 	 * @param string   $event_name Event name for logging.
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
-	public static function notify_pog_sync_to_crm( $order, $event_name = 'POG sync' ) {
+	public static function notify_invoice_status_to_crm( $order, $event_name = 'Invoice status sync' ) {
 		$invoice_id = $order->get_meta( 'crm_invoice_id' );
 		$member_id  = $order->get_meta( 'crm_member_id' );
 
 		if ( empty( $invoice_id ) || empty( $member_id ) ) {
 			Awana_Logger::warning(
-				'Cannot send POG sync webhook - missing invoice_id or member_id',
+				'Cannot send invoice status webhook - missing invoice_id or member_id',
+				array(
+					'order_id'   => $order->get_id(),
+					'invoice_id' => $invoice_id,
+					'member_id'  => $member_id,
+				)
+			);
+			return false;
+		}
+
+		// Get webhook URL from wp-config.php constant (required)
+		if ( ! defined( 'AWANA_INVOICE_STATUS_WEBHOOK_URL' ) || empty( AWANA_INVOICE_STATUS_WEBHOOK_URL ) ) {
+			Awana_Logger::error(
+				'Invoice status webhook URL not configured - AWANA_INVOICE_STATUS_WEBHOOK_URL must be defined in wp-config.php',
+				array( 'order_id' => $order->get_id() )
+			);
+			return false;
+		}
+		$webhook_url = AWANA_INVOICE_STATUS_WEBHOOK_URL;
+
+		// API key is optional for this endpoint; if configured, we send it as x-api-key
+		$api_key = ( defined( 'AWANA_INVOICE_STATUS_WEBHOOK_API_KEY' ) && ! empty( AWANA_INVOICE_STATUS_WEBHOOK_API_KEY ) )
+			? AWANA_INVOICE_STATUS_WEBHOOK_API_KEY
+			: '';
+
+		$pog_invoice_number  = $order->get_meta( 'pog_invoice_number', true );
+		$pog_kid_number      = $order->get_meta( 'pog_kid_number', true );
+		$pog_status          = $order->get_meta( 'pog_status', true );
+
+		$payload = array(
+			'invoiceId' => $invoice_id,
+		);
+
+		if ( ! empty( $pog_kid_number ) ) {
+			$payload['kid'] = (string) $pog_kid_number;
+		}
+
+		if ( ! empty( $pog_invoice_number ) ) {
+			// invoiceStatusWebhook supports these field names; we send both for compatibility.
+			$payload['pogInvoiceNumber'] = (string) $pog_invoice_number;
+			$payload['invoiceNumber']    = (string) $pog_invoice_number;
+		}
+
+		if ( ! empty( $pog_status ) ) {
+			$mapped_status = self::map_pog_status_to_webhook_status( $pog_status );
+			if ( $mapped_status !== null ) {
+				$payload['status'] = $mapped_status;
+			} else {
+				Awana_Logger::warning(
+					'Unknown pog_status value - not mapping to status for webhook payload',
+					array(
+						'order_id'    => $order->get_id(),
+						'pog_status'  => $pog_status,
+						'invoice_id'  => $invoice_id,
+						'member_id'   => $member_id,
+						'webhook_url' => $webhook_url,
+					)
+				);
+			}
+		}
+
+		return self::send_x_api_key_webhook( $webhook_url, $payload, $api_key, $event_name );
+	}
+
+	/**
+	 * Map pog_status values to webhook "status" values expected by receiver.
+	 *
+	 * @param string $pog_status POG status value stored on the order.
+	 * @return string|null Mapped status, or null if unknown.
+	 */
+	private static function map_pog_status_to_webhook_status( $pog_status ) {
+		$normalized = strtolower( trim( (string) $pog_status ) );
+		switch ( $normalized ) {
+			case 'order':
+				return 'pending';
+			case 'invoice':
+				return 'unpaid';
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * Send webhook to CRM when Integrera updates POG customer number
+	 *
+	 * @param WC_Order $order WooCommerce order object.
+	 * @param mixed    $pog_customer_number POG customer number.
+	 * @return bool|WP_Error True on success, WP_Error on failure.
+	 */
+	public static function notify_pog_customer_number_to_crm( $order, $pog_customer_number ) {
+		$invoice_id = $order->get_meta( 'crm_invoice_id' );
+		$member_id  = $order->get_meta( 'crm_member_id' );
+
+		if ( empty( $invoice_id ) || empty( $member_id ) ) {
+			Awana_Logger::warning(
+				'Cannot send POG customer number webhook - missing invoice_id or member_id',
 				array(
 					'order_id'   => $order->get_id(),
 					'invoice_id' => $invoice_id,
@@ -99,77 +194,12 @@ class Awana_CRM_Webhook {
 		}
 		$api_key = AWANA_POG_CUSTOMER_WEBHOOK_API_KEY;
 
-		$pog_customer_number = $order->get_meta( 'pog_customer_number', true );
-		$pog_invoice_number  = $order->get_meta( 'pog_invoice_number', true );
-		$pog_kid_number      = $order->get_meta( 'pog_kid_number', true );
-		$pog_status          = $order->get_meta( 'pog_status', true );
-
 		$payload = array(
-			'invoiceId' => $invoice_id,
-			'memberId'  => $member_id,
+			'invoiceId'           => $invoice_id,
+			'pog_customer_number' => (string) $pog_customer_number,
 		);
 
-		if ( ! empty( $pog_customer_number ) ) {
-			$payload['pog_customer_number'] = (string) $pog_customer_number;
-		}
-
-		if ( ! empty( $pog_kid_number ) ) {
-			$payload['kid'] = (string) $pog_kid_number;
-		}
-
-		if ( ! empty( $pog_invoice_number ) ) {
-			$payload['pog_invoice_number'] = (string) $pog_invoice_number;
-		}
-
-		if ( ! empty( $pog_status ) ) {
-			$mapped_status = self::map_pog_status_to_webhook_status( $pog_status );
-			if ( $mapped_status !== null ) {
-				$payload['status'] = $mapped_status;
-			} else {
-				Awana_Logger::warning(
-					'Unknown pog_status value - not mapping to status for webhook payload',
-					array(
-						'order_id'    => $order->get_id(),
-						'pog_status'  => $pog_status,
-						'invoice_id'  => $invoice_id,
-						'member_id'   => $member_id,
-						'webhook_url' => $webhook_url,
-					)
-				);
-			}
-		}
-
-		return self::send_pog_customer_webhook( $webhook_url, $payload, $api_key, $event_name );
-	}
-
-	/**
-	 * Map pog_status values to webhook "status" values expected by receiver.
-	 *
-	 * @param string $pog_status POG status value stored on the order.
-	 * @return string|null Mapped status, or null if unknown.
-	 */
-	private static function map_pog_status_to_webhook_status( $pog_status ) {
-		$normalized = strtolower( trim( (string) $pog_status ) );
-		switch ( $normalized ) {
-			case 'order':
-				return 'pending';
-			case 'invoice':
-				return 'unpaid';
-			default:
-				return null;
-		}
-	}
-
-	/**
-	 * Send webhook to CRM when Integrera updates POG customer number
-	 *
-	 * @param WC_Order $order WooCommerce order object.
-	 * @param mixed    $pog_customer_number POG customer number.
-	 * @return bool|WP_Error True on success, WP_Error on failure.
-	 */
-	public static function notify_pog_customer_number_to_crm( $order, $pog_customer_number ) {
-		// Backwards-compatible wrapper; send full snapshot payload.
-		return self::notify_pog_sync_to_crm( $order, 'POG customer number sync' );
+		return self::send_pog_customer_webhook( $webhook_url, $payload, $api_key, 'POG customer number sync' );
 	}
 
 	/**
@@ -267,13 +297,31 @@ class Awana_CRM_Webhook {
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
 	private static function send_pog_customer_webhook( $url, $payload, $api_key, $event_name ) {
+		return self::send_x_api_key_webhook( $url, $payload, $api_key, $event_name );
+	}
+
+	/**
+	 * Send webhook using x-api-key header format.
+	 *
+	 * @param string $url Webhook URL.
+	 * @param array  $payload Payload data.
+	 * @param string $api_key API key for authentication (optional).
+	 * @param string $event_name Event name for logging.
+	 * @return bool|WP_Error True on success, WP_Error on failure.
+	 */
+	private static function send_x_api_key_webhook( $url, $payload, $api_key, $event_name ) {
+		$headers = array(
+			'Content-Type' => 'application/json',
+		);
+
+		if ( ! empty( $api_key ) ) {
+			$headers['x-api-key'] = $api_key;
+		}
+
 		$args = array(
 			'method'  => 'POST',
 			'timeout' => 15,
-			'headers' => array(
-				'Content-Type' => 'application/json',
-				'x-api-key'    => $api_key,
-			),
+			'headers' => $headers,
 			'body'    => wp_json_encode( $payload ),
 		);
 
