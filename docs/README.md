@@ -79,48 +79,63 @@ Content-Type: application/json
 }
 ```
 
-### 2. Sync Invoice (POG/Integrera)
+## Outbound Webhooks (Woo → CRM)
 
-**POST** `/wp-json/awana/v1/invoice-sync`
+This plugin sends **two different webhooks** back to CRM when Integrera/POG updates order meta.
 
-**Headers:**
-```
-X-CRM-API-Key: your-api-key
-Content-Type: application/json
-```
+### 1) invoiceCustomerNumberWebhook
 
-**Request Body (Update POG Customer Number):**
-```json
-{
-  "invoiceId": "firebaseRecordName",
-  "memberId": "b8dab589-dbde-4516-b56e-6b5fcb853ec6",
-  "pogCustomerNumber": 123456,
-  "updatePogCustomerNumber": true
-}
-```
+- **Purpose**: sync `pog_customer_number` to CRM.
+- **Trigger**: Woo order meta `pog_customer_number` changes.
+- **Config (wp-config.php)**:
+  - `AWANA_POG_CUSTOMER_WEBHOOK_URL` (required)
+  - `AWANA_POG_CUSTOMER_WEBHOOK_API_KEY` (required; sent as `x-api-key`)
+- **Payload**:
+  - `invoiceId`
+  - `pog_customer_number`
 
-**Request Body (Update Payment Status):**
-```json
-{
-  "invoiceId": "firebaseRecordName",
-  "memberId": "b8dab589-dbde-4516-b56e-6b5fcb853ec6",
-  "pogCustomerNumber": 123456,
-  "status": "paid",
-  "amountPaid": 1750,
-  "updateInvoiceStatus": true
-}
+Example:
+
+```bash
+curl -X POST "https://invoicecustomernumberwebhook-<...>/" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: <key>" \
+  -d '{
+    "invoiceId": "YrFJsshG5K0RFmywbp1P",
+    "pog_customer_number": "10199"
+  }'
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "wooOrderId": 1234,
-  "updated": {
-    "pogCustomerNumber": true,
-    "status": true
-  }
-}
+### 2) invoiceStatusWebhook
+
+- **Purpose**: sync invoice status + reference fields (KID / invoice number) to CRM.
+- **Trigger**: Woo order meta `pog_status`, `pog_kid_number`, or `pog_invoice_number` changes.
+- **Config (wp-config.php)**:
+  - `AWANA_INVOICE_STATUS_WEBHOOK_URL` (required)
+  - `AWANA_INVOICE_STATUS_WEBHOOK_API_KEY` (optional; sent as `x-api-key` if set)
+- **Payload**:
+  - `invoiceId` (required)
+  - `kid` (optional; from `pog_kid_number`)
+  - `pogInvoiceNumber` + `invoiceNumber` (optional; from `pog_invoice_number`)
+  - `status` (optional; mapped from `pog_status`)
+
+Status mapping:
+- `pog_status=order` → `status=pending`
+- `pog_status=invoice` → `status=unpaid`
+
+Example:
+
+```bash
+curl -X POST "https://invoicestatuswebhook-<...>/" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: <key>" \
+  -d '{
+    "invoiceId": "YrFJsshG5K0RFmywbp1P",
+    "kid": "12345678903",
+    "pogInvoiceNumber": "999999",
+    "invoiceNumber": "999999",
+    "status": "unpaid"
+  }'
 ```
 
 ## Status Mapping
@@ -136,25 +151,24 @@ Digital status → WooCommerce status:
 
 The plugin stores the following meta fields on orders:
 
-### Digital Fields (prefix: `_digital_`)
-- `_digital_invoice_id` - Unique invoice ID from Digital system
-- `_digital_invoice_number` - Human-readable invoice number
-- `_digital_member_id` - Member ID
-- `_digital_member_name` - Member name
-- `_digital_organization_id` - Organization ID
-- `_digital_organization_name` - Organization name
-- `_digital_type` - Invoice type (e.g., membership_fee)
-- `_digital_source` - Source system (e.g., awana-crm)
-- `_digital_sync_woo` - Sync status (pending/synced)
-- `_digital_invoice_date` - Invoice date
-- `_digital_due_date` - Due date
+### CRM/Digital identifiers
+- `crm_invoice_id` - Invoice ID (used to find/update the same Woo order)
+- `crm_member_id` - Member ID
+- `crm_organization_id` - Organization ID
+- `crm_source` - Source system (e.g. `awana-crm`)
+- `crm_sync_woo` - Sync marker
 
-### POG Fields (prefix: `_pog_`)
-- `_pog_customer_number` - POG customer number
-- `_pog_last_sync_at` - Last sync timestamp
-- `_paid_via_pog` - Boolean indicating payment via POG
-- `_amount_paid` - Amount paid
-- `_paid_at` - Payment timestamp
+### POG fields (written by Integrera/POG)
+- `pog_customer_number` - POG customer number
+- `pog_invoice_number` - POG invoice number
+- `pog_kid_number` - KID
+- `pog_status` - POG status (mapped and sent to `invoiceStatusWebhook`)
+
+### Sync dedupe fields (internal)
+- `_pog_customer_synced_to_crm`
+- `_pog_invoice_number_synced_to_crm`
+- `_pog_kid_number_synced_to_crm`
+- `_pog_status_synced_to_crm`
 
 ## Action Hooks
 
