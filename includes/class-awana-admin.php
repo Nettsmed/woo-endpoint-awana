@@ -23,6 +23,7 @@ class Awana_Admin {
 		add_action( 'admin_enqueue_scripts', array( $instance, 'enqueue_admin_scripts' ) );
 		add_action( 'wp_ajax_awana_manual_sync', array( $instance, 'handle_manual_sync_ajax' ) );
 		add_action( 'wp_ajax_awana_retry_sync', array( $instance, 'handle_retry_sync_ajax' ) );
+		add_action( 'wp_ajax_awana_sync_order', array( $instance, 'handle_sync_order_ajax' ) );
 	}
 
 	/**
@@ -50,6 +51,71 @@ class Awana_Admin {
 		}
 
 		wp_enqueue_script( 'jquery' );
+		wp_add_inline_script( 'jquery', $this->get_inline_script() );
+	}
+
+	/**
+	 * Get inline JavaScript for AJAX sync functionality
+	 *
+	 * @return string JavaScript code.
+	 */
+	private function get_inline_script() {
+		ob_start();
+		$ajax_url = admin_url( 'admin-ajax.php' );
+		$nonce = wp_create_nonce( 'awana_sync_order' );
+		?>
+		<script type="text/javascript">
+		jQuery(document).ready(function($) {
+			$('.awana-sync-order-btn').on('click', function(e) {
+				e.preventDefault();
+				var $button = $(this);
+				var orderId = $button.data('order-id');
+				var $listItem = $button.closest('li');
+				var originalText = $button.text();
+				
+				// Disable button and show loading state
+				$button.prop('disabled', true).text('<?php echo esc_js( __( 'Syncing...', 'awana-digital-sync' ) ); ?>');
+				
+				$.ajax({
+					url: '<?php echo esc_url( $ajax_url ); ?>',
+					type: 'POST',
+					data: {
+						action: 'awana_sync_order',
+						order_id: orderId,
+						nonce: '<?php echo esc_js( $nonce ); ?>'
+					},
+					success: function(response) {
+						if (response.success) {
+							// Show success message
+							$listItem.append('<span style="color: green; margin-left: 10px;">✓ ' + response.data.message + '</span>');
+							// Remove the button
+							$button.remove();
+							// Optionally fade out the list item after a delay
+							setTimeout(function() {
+								$listItem.fadeOut(500, function() {
+									$(this).remove();
+									// Reload page after 2 seconds to refresh the health check
+									setTimeout(function() {
+										location.reload();
+									}, 2000);
+								});
+							}, 1500);
+						} else {
+							// Show error message
+							$listItem.append('<span style="color: red; margin-left: 10px;">✗ ' + response.data.message + '</span>');
+							$button.prop('disabled', false).text(originalText);
+						}
+					},
+					error: function() {
+						$listItem.append('<span style="color: red; margin-left: 10px;"><?php echo esc_js( __( 'Error: Sync request failed', 'awana-digital-sync' ) ); ?></span>');
+						$button.prop('disabled', false).text(originalText);
+					}
+				});
+			});
+		});
+		</script>
+		<?php
+		return ob_get_clean();
 	}
 
 	/**
@@ -196,6 +262,9 @@ class Awana_Admin {
 											<?php if ( ! empty( $order_data['completed_date'] ) ) : ?>
 												- <?php echo esc_html( __( 'Completed:', 'awana-digital-sync' ) . ' ' . $order_data['completed_date'] ); ?>
 											<?php endif; ?>
+											<button type="button" class="button button-small awana-sync-order-btn" data-order-id="<?php echo esc_attr( $order_data['order_id'] ); ?>" style="margin-left: 10px;">
+												<?php echo esc_html( __( 'Sync', 'awana-digital-sync' ) ); ?>
+											</button>
 										</li>
 									<?php endforeach; ?>
 								</ul>
@@ -207,6 +276,9 @@ class Awana_Admin {
 											<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $order_data['order_id'] . '&action=edit' ) ); ?>">
 												Order #<?php echo esc_html( $order_data['order_number'] ); ?>
 											</a>
+											<button type="button" class="button button-small awana-sync-order-btn" data-order-id="<?php echo esc_attr( $order_data['order_id'] ); ?>" style="margin-left: 10px;">
+												<?php echo esc_html( __( 'Sync', 'awana-digital-sync' ) ); ?>
+											</button>
 										</li>
 									<?php endforeach; ?>
 								</ul>
@@ -232,6 +304,9 @@ class Awana_Admin {
 											<?php if ( ! empty( $order_data['last_error'] ) ) : ?>
 												: <?php echo esc_html( $order_data['last_error'] ); ?>
 											<?php endif; ?>
+											<button type="button" class="button button-small awana-sync-order-btn" data-order-id="<?php echo esc_attr( $order_data['order_id'] ); ?>" style="margin-left: 10px;">
+												<?php echo esc_html( __( 'Sync', 'awana-digital-sync' ) ); ?>
+											</button>
 										</li>
 									<?php endforeach; ?>
 								</ul>
@@ -244,6 +319,9 @@ class Awana_Admin {
 												Order #<?php echo esc_html( $order_data['order_number'] ); ?>
 											</a>
 											- <?php echo esc_html( sprintf( __( '%d errors', 'awana-digital-sync' ), $order_data['error_count'] ) ); ?>
+											<button type="button" class="button button-small awana-sync-order-btn" data-order-id="<?php echo esc_attr( $order_data['order_id'] ); ?>" style="margin-left: 10px;">
+												<?php echo esc_html( __( 'Sync', 'awana-digital-sync' ) ); ?>
+											</button>
 										</li>
 									<?php endforeach; ?>
 								</ul>
@@ -352,6 +430,30 @@ class Awana_Admin {
 	 */
 	public function handle_retry_sync_ajax() {
 		check_ajax_referer( 'awana_retry_sync', 'nonce' );
+
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Insufficient permissions.', 'awana-digital-sync' ) ) );
+		}
+
+		$order_id = isset( $_POST['order_id'] ) ? absint( $_POST['order_id'] ) : 0;
+		if ( $order_id <= 0 ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid order ID.', 'awana-digital-sync' ) ) );
+		}
+
+		$result = Awana_CRM_Webhook::sync_all_order_metadata_to_crm( $order_id, true );
+
+		if ( $result['success'] ) {
+			wp_send_json_success( array( 'message' => $result['message'] ) );
+		} else {
+			wp_send_json_error( array( 'message' => $result['message'] ) );
+		}
+	}
+
+	/**
+	 * Handle sync order AJAX request (from health check)
+	 */
+	public function handle_sync_order_ajax() {
+		check_ajax_referer( 'awana_sync_order', 'nonce' );
 
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			wp_send_json_error( array( 'message' => __( 'Insufficient permissions.', 'awana-digital-sync' ) ) );
