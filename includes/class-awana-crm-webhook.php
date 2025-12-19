@@ -97,6 +97,7 @@ class Awana_CRM_Webhook {
 		$pog_invoice_number  = $order->get_meta( 'pog_invoice_number', true );
 		$pog_kid_number      = $order->get_meta( 'pog_kid_number', true );
 		$pog_status          = $order->get_meta( 'pog_status', true );
+		$is_completed        = $order->has_status( 'completed' );
 
 		$payload = array(
 			'invoiceId' => $invoice_id,
@@ -112,7 +113,11 @@ class Awana_CRM_Webhook {
 			$payload['invoiceNumber']    = (string) $pog_invoice_number;
 		}
 
-		if ( ! empty( $pog_status ) ) {
+		// If Woo has marked the order as completed, always reflect this as "paid" in CRM.
+		// This overrides any pog_status mapping (pending/unpaid) because completion indicates payment has been received.
+		if ( $is_completed ) {
+			$payload['status'] = 'paid';
+		} elseif ( ! empty( $pog_status ) ) {
 			$mapped_status = self::map_pog_status_to_webhook_status( $pog_status );
 			if ( $mapped_status !== null ) {
 				$payload['status'] = $mapped_status;
