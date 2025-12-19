@@ -164,7 +164,7 @@ class Awana_Admin {
 			<div class="notice notice-info" style="margin: 20px 0;">
 				<p>
 					<strong><?php echo esc_html( __( 'About this dashboard:', 'awana-digital-sync' ) ); ?></strong>
-					<?php echo esc_html( __( 'This dashboard tracks the sync status between AWANA CRM and Wipnos (WooCommerce). It does not track Integrera sync operations.', 'awana-digital-sync' ) ); ?>
+					<?php echo esc_html( __( 'This dashboard tracks the sync status between AWANA CRM and WooCommerce. It does not track Integrera sync operations.', 'awana-digital-sync' ) ); ?>
 				</p>
 			</div>
 
@@ -313,6 +313,9 @@ class Awana_Admin {
 											<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $order_data['order_id'] . '&action=edit' ) ); ?>">
 												Order #<?php echo esc_html( $order_data['order_number'] ); ?>
 											</a>
+											<?php if ( ! empty( $order_data['invoice_id'] ) ) : ?>
+												- Invoice ID: <a href="<?php echo esc_url( $this->get_firebase_url( $order_data['invoice_id'] ) ); ?>" target="_blank" title="<?php echo esc_attr( __( 'View in Firebase', 'awana-digital-sync' ) ); ?>"><?php echo esc_html( $order_data['invoice_id'] ); ?></a>
+											<?php endif; ?>
 											<?php if ( ! empty( $order_data['completed_date'] ) ) : ?>
 												- <?php echo esc_html( __( 'Completed:', 'awana-digital-sync' ) . ' ' . $order_data['completed_date'] ); ?>
 											<?php endif; ?>
@@ -330,6 +333,9 @@ class Awana_Admin {
 											<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $order_data['order_id'] . '&action=edit' ) ); ?>">
 												Order #<?php echo esc_html( $order_data['order_number'] ); ?>
 											</a>
+											<?php if ( ! empty( $order_data['invoice_id'] ) ) : ?>
+												- Invoice ID: <a href="<?php echo esc_url( $this->get_firebase_url( $order_data['invoice_id'] ) ); ?>" target="_blank" title="<?php echo esc_attr( __( 'View in Firebase', 'awana-digital-sync' ) ); ?>"><?php echo esc_html( $order_data['invoice_id'] ); ?></a>
+											<?php endif; ?>
 											<button type="button" class="button button-small awana-sync-order-btn" data-order-id="<?php echo esc_attr( $order_data['order_id'] ); ?>" style="margin-left: 10px;">
 												<?php echo esc_html( __( 'Sync', 'awana-digital-sync' ) ); ?>
 											</button>
@@ -354,6 +360,9 @@ class Awana_Admin {
 											<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $order_data['order_id'] . '&action=edit' ) ); ?>">
 												Order #<?php echo esc_html( $order_data['order_number'] ); ?>
 											</a>
+											<?php if ( ! empty( $order_data['invoice_id'] ) ) : ?>
+												- Invoice ID: <a href="<?php echo esc_url( $this->get_firebase_url( $order_data['invoice_id'] ) ); ?>" target="_blank" title="<?php echo esc_attr( __( 'View in Firebase', 'awana-digital-sync' ) ); ?>"><?php echo esc_html( $order_data['invoice_id'] ); ?></a>
+											<?php endif; ?>
 											- <?php echo esc_html( sprintf( __( '%d errors', 'awana-digital-sync' ), $order_data['error_count'] ) ); ?>
 											<?php if ( ! empty( $order_data['last_error'] ) ) : ?>
 												: <?php echo esc_html( $order_data['last_error'] ); ?>
@@ -372,6 +381,9 @@ class Awana_Admin {
 											<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $order_data['order_id'] . '&action=edit' ) ); ?>">
 												Order #<?php echo esc_html( $order_data['order_number'] ); ?>
 											</a>
+											<?php if ( ! empty( $order_data['invoice_id'] ) ) : ?>
+												- Invoice ID: <a href="<?php echo esc_url( $this->get_firebase_url( $order_data['invoice_id'] ) ); ?>" target="_blank" title="<?php echo esc_attr( __( 'View in Firebase', 'awana-digital-sync' ) ); ?>"><?php echo esc_html( $order_data['invoice_id'] ); ?></a>
+											<?php endif; ?>
 											- <?php echo esc_html( sprintf( __( '%d errors', 'awana-digital-sync' ), $order_data['error_count'] ) ); ?>
 											<button type="button" class="button button-small awana-sync-order-btn" data-order-id="<?php echo esc_attr( $order_data['order_id'] ); ?>" style="margin-left: 10px;">
 												<?php echo esc_html( __( 'Sync', 'awana-digital-sync' ) ); ?>
