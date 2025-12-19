@@ -275,6 +275,9 @@ class Awana_Order_Handler {
 	private static function set_order_status( $order, $data ) {
 		$woo_status = awana_map_status_digital_to_woo( $data['status'] ?? 'pending' );
 		$order->set_status( $woo_status );
+		// Mark this status as already known/synced to CRM since it originates from the Digital/CRM → Woo sync.
+		// This prevents sending "paid" back to CRM when the CRM itself sets status=paid during order creation/update.
+		$order->update_meta_data( '_woo_status_synced_to_crm', $woo_status );
 	}
 
 	/**

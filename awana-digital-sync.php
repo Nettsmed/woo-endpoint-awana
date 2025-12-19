@@ -184,6 +184,54 @@ add_action( 'woocommerce_after_order_object_save', function( $order ) {
 	}
 }, 10, 1 );
 
+/**
+ * When an order is marked completed in Woo, reflect this in CRM as status=paid.
+ *
+ * This is independent of the pog_status mapping (pending/unpaid). A completed order implies payment is received.
+ */
+add_action( 'woocommerce_order_status_changed', function( $order_id, $old_status, $new_status, $order ) {
+	if ( $new_status !== 'completed' ) {
+		return;
+	}
+
+	if ( ! is_a( $order, 'WC_Order' ) ) {
+		$order = wc_get_order( $order_id );
+	}
+	if ( ! $order ) {
+		return;
+	}
+
+	// Only process if this is an Awana order
+	$invoice_id = $order->get_meta( 'crm_invoice_id', true );
+	$member_id  = $order->get_meta( 'crm_member_id', true );
+	if ( empty( $invoice_id ) || empty( $member_id ) ) {
+		return;
+	}
+
+	// Avoid loops/duplicates: if this status was already synced (or originally set by CRM), skip.
+	$last_synced_status = $order->get_meta( '_woo_status_synced_to_crm', true );
+	if ( (string) $last_synced_status === (string) $new_status ) {
+		return;
+	}
+
+	Awana_Logger::info(
+		'Order status changed to completed - syncing paid status to CRM',
+		array(
+			'order_id'    => $order->get_id(),
+			'old_status'  => $old_status,
+			'new_status'  => $new_status,
+			'invoice_id'  => $invoice_id,
+			'member_id'   => $member_id,
+		)
+	);
+
+	Awana_CRM_Webhook::notify_invoice_status_to_crm( $order, 'Invoice status sync (order completed)' );
+
+	// Mark as synced to prevent duplicate sends.
+	$order->update_meta_data( '_woo_status_synced_to_crm', $new_status );
+	$order->save();
+}, 10, 4 );
+
 // Declare WooCommerce HPOS (High-Performance Order Storage) compatibility
 add_action( 'before_woocommerce_init', function() {
 	if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
