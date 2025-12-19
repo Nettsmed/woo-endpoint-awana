@@ -83,6 +83,9 @@ class Awana_Admin {
 
 		$failed_syncs = $this->get_failed_syncs();
 		$stats = $this->get_sync_statistics();
+		$recent_syncs = $this->get_recent_syncs( 20 );
+		$completed_not_synced = $this->get_completed_orders_not_synced();
+		$high_error_orders = $this->get_orders_with_high_error_count();
 
 		?>
 		<div class="wrap">
@@ -107,6 +110,147 @@ class Awana_Admin {
 						</tr>
 					</tbody>
 				</table>
+			</div>
+
+			<!-- Recent Sync Activity -->
+			<div class="awana-recent-syncs" style="margin: 20px 0;">
+				<h2><?php echo esc_html( __( 'Recent Sync Activity', 'awana-digital-sync' ) ); ?></h2>
+				<?php if ( empty( $recent_syncs ) ) : ?>
+					<p><?php echo esc_html( __( 'No recent sync activity.', 'awana-digital-sync' ) ); ?></p>
+				<?php else : ?>
+					<table class="wp-list-table widefat fixed striped">
+						<thead>
+							<tr>
+								<th><?php echo esc_html( __( 'Time', 'awana-digital-sync' ) ); ?></th>
+								<th><?php echo esc_html( __( 'Order ID', 'awana-digital-sync' ) ); ?></th>
+								<th><?php echo esc_html( __( 'Invoice ID', 'awana-digital-sync' ) ); ?></th>
+								<th><?php echo esc_html( __( 'Sync Type', 'awana-digital-sync' ) ); ?></th>
+								<th><?php echo esc_html( __( 'Status', 'awana-digital-sync' ) ); ?></th>
+								<th><?php echo esc_html( __( 'Result', 'awana-digital-sync' ) ); ?></th>
+							</tr>
+						</thead>
+						<tbody>
+							<?php foreach ( $recent_syncs as $sync ) : ?>
+								<tr>
+									<td><?php echo esc_html( $sync['last_attempt'] ); ?></td>
+									<td>
+										<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $sync['order_id'] . '&action=edit' ) ); ?>">
+											#<?php echo esc_html( $sync['order_number'] ); ?>
+										</a>
+									</td>
+									<td><?php echo esc_html( $sync['invoice_id'] ); ?></td>
+									<td><?php echo esc_html( $sync['sync_type'] ); ?></td>
+									<td>
+										<?php
+										$status_class = '';
+										if ( $sync['status'] === 'success' ) {
+											$status_class = 'color: green;';
+										} elseif ( $sync['status'] === 'failed' ) {
+											$status_class = 'color: red;';
+										} elseif ( $sync['status'] === 'pending' ) {
+											$status_class = 'color: orange;';
+										}
+										?>
+										<span style="<?php echo esc_attr( $status_class ); ?>">
+											<?php echo esc_html( ucfirst( $sync['status'] ) ); ?>
+										</span>
+									</td>
+									<td>
+										<?php if ( ! empty( $sync['error'] ) ) : ?>
+											<span style="color: red;" title="<?php echo esc_attr( $sync['error'] ); ?>">
+												<?php echo esc_html( $sync['error'] ); ?>
+											</span>
+										<?php else : ?>
+											<span style="color: green;"><?php echo esc_html( __( 'Success', 'awana-digital-sync' ) ); ?></span>
+										<?php endif; ?>
+									</td>
+								</tr>
+							<?php endforeach; ?>
+						</tbody>
+					</table>
+				<?php endif; ?>
+			</div>
+
+			<!-- Sync Health Check -->
+			<div class="awana-sync-health" style="margin: 20px 0;">
+				<h2><?php echo esc_html( __( 'Sync Health Check', 'awana-digital-sync' ) ); ?></h2>
+				<?php if ( empty( $completed_not_synced ) && empty( $high_error_orders ) ) : ?>
+					<p style="color: green;">
+						<strong><?php echo esc_html( __( '✓ No sync issues detected.', 'awana-digital-sync' ) ); ?></strong>
+					</p>
+				<?php else : ?>
+					<?php if ( ! empty( $completed_not_synced ) ) : ?>
+						<div class="awana-health-issue" style="margin: 15px 0; padding: 10px; border-left: 4px solid #dc3232; background: #fff;">
+							<h3 style="margin-top: 0;">
+								<?php echo esc_html( __( 'Completed Orders Not Synced as Paid', 'awana-digital-sync' ) ); ?>
+								<span style="color: #dc3232;">(<?php echo esc_html( count( $completed_not_synced ) ); ?>)</span>
+							</h3>
+							<p><?php echo esc_html( __( 'Orders with completed status that haven\'t been synced with paid status to CRM.', 'awana-digital-sync' ) ); ?></p>
+							<?php if ( count( $completed_not_synced ) <= 10 ) : ?>
+								<ul>
+									<?php foreach ( $completed_not_synced as $order_data ) : ?>
+										<li>
+											<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $order_data['order_id'] . '&action=edit' ) ); ?>">
+												Order #<?php echo esc_html( $order_data['order_number'] ); ?>
+											</a>
+											<?php if ( ! empty( $order_data['completed_date'] ) ) : ?>
+												- <?php echo esc_html( __( 'Completed:', 'awana-digital-sync' ) . ' ' . $order_data['completed_date'] ); ?>
+											<?php endif; ?>
+										</li>
+									<?php endforeach; ?>
+								</ul>
+							<?php else : ?>
+								<p><?php echo esc_html( sprintf( __( '%d orders found. Showing first 10.', 'awana-digital-sync' ), count( $completed_not_synced ) ) ); ?></p>
+								<ul>
+									<?php foreach ( array_slice( $completed_not_synced, 0, 10 ) as $order_data ) : ?>
+										<li>
+											<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $order_data['order_id'] . '&action=edit' ) ); ?>">
+												Order #<?php echo esc_html( $order_data['order_number'] ); ?>
+											</a>
+										</li>
+									<?php endforeach; ?>
+								</ul>
+							<?php endif; ?>
+						</div>
+					<?php endif; ?>
+
+					<?php if ( ! empty( $high_error_orders ) ) : ?>
+						<div class="awana-health-issue" style="margin: 15px 0; padding: 10px; border-left: 4px solid #dc3232; background: #fff;">
+							<h3 style="margin-top: 0;">
+								<?php echo esc_html( __( 'Orders with Multiple Sync Failures', 'awana-digital-sync' ) ); ?>
+								<span style="color: #dc3232;">(<?php echo esc_html( count( $high_error_orders ) ); ?>)</span>
+							</h3>
+							<p><?php echo esc_html( __( 'Orders that have failed to sync 3 or more times.', 'awana-digital-sync' ) ); ?></p>
+							<?php if ( count( $high_error_orders ) <= 10 ) : ?>
+								<ul>
+									<?php foreach ( $high_error_orders as $order_data ) : ?>
+										<li>
+											<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $order_data['order_id'] . '&action=edit' ) ); ?>">
+												Order #<?php echo esc_html( $order_data['order_number'] ); ?>
+											</a>
+											- <?php echo esc_html( sprintf( __( '%d errors', 'awana-digital-sync' ), $order_data['error_count'] ) ); ?>
+											<?php if ( ! empty( $order_data['last_error'] ) ) : ?>
+												: <?php echo esc_html( $order_data['last_error'] ); ?>
+											<?php endif; ?>
+										</li>
+									<?php endforeach; ?>
+								</ul>
+							<?php else : ?>
+								<p><?php echo esc_html( sprintf( __( '%d orders found. Showing first 10.', 'awana-digital-sync' ), count( $high_error_orders ) ) ); ?></p>
+								<ul>
+									<?php foreach ( array_slice( $high_error_orders, 0, 10 ) as $order_data ) : ?>
+										<li>
+											<a href="<?php echo esc_url( admin_url( 'post.php?post=' . $order_data['order_id'] . '&action=edit' ) ); ?>">
+												Order #<?php echo esc_html( $order_data['order_number'] ); ?>
+											</a>
+											- <?php echo esc_html( sprintf( __( '%d errors', 'awana-digital-sync' ), $order_data['error_count'] ) ); ?>
+										</li>
+									<?php endforeach; ?>
+								</ul>
+							<?php endif; ?>
+						</div>
+					<?php endif; ?>
+				<?php endif; ?>
 			</div>
 
 			<!-- Manual Sync -->
@@ -329,6 +473,182 @@ class Awana_Admin {
 		}
 
 		return $error;
+	}
+
+	/**
+	 * Get recent sync activity
+	 *
+	 * @param int $limit Number of recent syncs to retrieve.
+	 * @return array Array of recent sync activities.
+	 */
+	private function get_recent_syncs( $limit = 50 ) {
+		// Get all Awana orders ordered by last sync attempt
+		$orders = wc_get_orders(
+			array(
+				'limit'      => $limit,
+				'meta_key'   => '_awana_sync_last_attempt',
+				'orderby'    => 'meta_value_num',
+				'order'      => 'DESC',
+				'meta_compare' => 'EXISTS',
+				'return'     => 'ids',
+			)
+		);
+
+		$recent_syncs = array();
+
+		foreach ( $orders as $order_id ) {
+			$order = wc_get_order( $order_id );
+			if ( ! $order ) {
+				continue;
+			}
+
+			$invoice_id = $order->get_meta( 'crm_invoice_id', true );
+			$sync_status = $order->get_meta( 'crm_sync_woo', true );
+			$last_attempt = $order->get_meta( '_awana_sync_last_attempt', true );
+			$last_success = $order->get_meta( '_awana_sync_last_success', true );
+			$last_error = $order->get_meta( '_awana_sync_last_error', true );
+			$order_status = $order->get_status();
+
+			// Determine sync type based on what triggered it
+			$sync_type = $this->determine_sync_type( $order );
+
+			$recent_syncs[] = array(
+				'order_id'     => $order_id,
+				'order_number' => $order->get_order_number(),
+				'invoice_id'   => $invoice_id ? $invoice_id : __( 'N/A', 'awana-digital-sync' ),
+				'sync_type'    => $sync_type,
+				'status'       => $sync_status,
+				'order_status' => $order_status,
+				'last_attempt' => $last_attempt ? date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $last_attempt ) : __( 'Never', 'awana-digital-sync' ),
+				'last_success' => $last_success ? date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $last_success ) : __( 'Never', 'awana-digital-sync' ),
+				'error'        => $last_error ? $this->format_sync_error( $last_error ) : '',
+				'timestamp'    => $last_attempt ? $last_attempt : 0,
+			);
+		}
+
+		// Sort by timestamp descending (most recent first)
+		usort( $recent_syncs, function( $a, $b ) {
+			return $b['timestamp'] - $a['timestamp'];
+		} );
+
+		return array_slice( $recent_syncs, 0, $limit );
+	}
+
+	/**
+	 * Determine sync type based on order state
+	 *
+	 * @param WC_Order $order Order object.
+	 * @return string Sync type description.
+	 */
+	private function determine_sync_type( $order ) {
+		$order_status = $order->get_status();
+		$pog_customer = $order->get_meta( 'pog_customer_number', true );
+		$pog_status = $order->get_meta( 'pog_status', true );
+		$last_success = $order->get_meta( '_awana_sync_last_success', true );
+		$last_attempt = $order->get_meta( '_awana_sync_last_attempt', true );
+
+		// Check if sync happened after order was completed
+		if ( $order_status === 'completed' && $last_success ) {
+			$order_date = $order->get_date_modified();
+			if ( $order_date && $last_success >= $order_date->getTimestamp() ) {
+				return __( 'Order Status Change', 'awana-digital-sync' );
+			}
+		}
+
+		// Check if POG customer number exists and was synced
+		if ( ! empty( $pog_customer ) ) {
+			$synced_customer = $order->get_meta( '_pog_customer_synced_to_crm', true );
+			if ( (string) $pog_customer === (string) $synced_customer ) {
+				return __( 'POG Customer Number', 'awana-digital-sync' );
+			}
+		}
+
+		// Check if POG status/KID exists
+		if ( ! empty( $pog_status ) ) {
+			return __( 'POG Status/KID', 'awana-digital-sync' );
+		}
+
+		// Default to manual if we can't determine
+		return __( 'Manual', 'awana-digital-sync' );
+	}
+
+	/**
+	 * Get completed orders that haven't been synced as paid
+	 *
+	 * @return array Array of completed orders not synced.
+	 */
+	private function get_completed_orders_not_synced() {
+		$orders = wc_get_orders(
+			array(
+				'limit'      => 100,
+				'status'     => 'completed',
+				'meta_key'   => 'crm_invoice_id',
+				'meta_compare' => 'EXISTS',
+				'return'     => 'ids',
+			)
+		);
+
+		$results = array();
+
+		foreach ( $orders as $order_id ) {
+			$order = wc_get_order( $order_id );
+			if ( ! $order ) {
+				continue;
+			}
+
+			$last_success = $order->get_meta( '_awana_sync_last_success', true );
+			$order_date = $order->get_date_modified();
+
+			// If never synced, or last sync was before order was completed
+			if ( ! $last_success || ( $order_date && $last_success < $order_date->getTimestamp() ) ) {
+				$results[] = array(
+					'order_id'       => $order_id,
+					'order_number'   => $order->get_order_number(),
+					'invoice_id'     => $order->get_meta( 'crm_invoice_id', true ),
+					'completed_date' => $order_date ? $order_date->date_i18n( get_option( 'date_format' ) ) : '',
+				);
+			}
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Get orders with high error counts
+	 *
+	 * @return array Array of orders with 3+ sync failures.
+	 */
+	private function get_orders_with_high_error_count() {
+		$orders = wc_get_orders(
+			array(
+				'limit'      => 100,
+				'meta_key'   => '_awana_sync_error_count',
+				'meta_value' => 3,
+				'meta_compare' => '>=',
+				'return'     => 'ids',
+			)
+		);
+
+		$results = array();
+		foreach ( $orders as $order_id ) {
+			$order = wc_get_order( $order_id );
+			if ( ! $order ) {
+				continue;
+			}
+
+			$error_count = $order->get_meta( '_awana_sync_error_count', true );
+			$last_error = $order->get_meta( '_awana_sync_last_error', true );
+
+			$results[] = array(
+				'order_id'     => $order_id,
+				'order_number' => $order->get_order_number(),
+				'invoice_id'   => $order->get_meta( 'crm_invoice_id', true ),
+				'error_count'  => $error_count ? $error_count : 0,
+				'last_error'   => $last_error ? $this->format_sync_error( $last_error ) : __( 'No error message', 'awana-digital-sync' ),
+			);
+		}
+
+		return $results;
 	}
 }
 
