@@ -64,7 +64,6 @@ class Awana_Admin {
 		$ajax_url = admin_url( 'admin-ajax.php' );
 		$nonce = wp_create_nonce( 'awana_sync_order' );
 		?>
-		<script type="text/javascript">
 		jQuery(document).ready(function($) {
 			$('.awana-sync-order-btn').on('click', function(e) {
 				e.preventDefault();
@@ -113,7 +112,6 @@ class Awana_Admin {
 				});
 			});
 		});
-		</script>
 		<?php
 		return ob_get_clean();
 	}
