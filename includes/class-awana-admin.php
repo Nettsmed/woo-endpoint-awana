@@ -147,11 +147,15 @@ class Awana_Admin {
 			}
 		}
 
-		$failed_syncs = $this->get_failed_syncs();
+		// Get search query
+		$search_query = isset( $_GET['awana_search'] ) ? sanitize_text_field( $_GET['awana_search'] ) : '';
+		$search_type = isset( $_GET['awana_search_type'] ) ? sanitize_text_field( $_GET['awana_search_type'] ) : 'order_id';
+
+		$failed_syncs = $this->get_failed_syncs( $search_query, $search_type );
 		$stats = $this->get_sync_statistics();
-		$recent_syncs = $this->get_recent_syncs( 20 );
-		$completed_not_synced = $this->get_completed_orders_not_synced();
-		$high_error_orders = $this->get_orders_with_high_error_count();
+		$recent_syncs = $this->get_recent_syncs( 20, $search_query, $search_type );
+		$completed_not_synced = $this->get_completed_orders_not_synced( $search_query, $search_type );
+		$high_error_orders = $this->get_orders_with_high_error_count( $search_query, $search_type );
 
 		?>
 		<div class="wrap">
@@ -162,6 +166,41 @@ class Awana_Admin {
 					<strong><?php echo esc_html( __( 'About this dashboard:', 'awana-digital-sync' ) ); ?></strong>
 					<?php echo esc_html( __( 'This dashboard tracks the sync status between AWANA CRM and Wipnos (WooCommerce). It does not track Integrera sync operations.', 'awana-digital-sync' ) ); ?>
 				</p>
+			</div>
+
+			<!-- Search -->
+			<div class="awana-search" style="margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #ccd0d4;">
+				<h2 style="margin-top: 0;"><?php echo esc_html( __( 'Search', 'awana-digital-sync' ) ); ?></h2>
+				<form method="get" action="">
+					<input type="hidden" name="page" value="awana-sync" />
+					<table class="form-table">
+						<tbody>
+							<tr>
+								<th scope="row">
+									<label for="awana_search_type"><?php echo esc_html( __( 'Search By', 'awana-digital-sync' ) ); ?></label>
+								</th>
+								<td>
+									<select id="awana_search_type" name="awana_search_type">
+										<option value="order_id" <?php selected( $search_type, 'order_id' ); ?>><?php echo esc_html( __( 'Order ID', 'awana-digital-sync' ) ); ?></option>
+										<option value="invoice_id" <?php selected( $search_type, 'invoice_id' ); ?>><?php echo esc_html( __( 'Invoice ID', 'awana-digital-sync' ) ); ?></option>
+									</select>
+								</td>
+							</tr>
+							<tr>
+								<th scope="row">
+									<label for="awana_search"><?php echo esc_html( __( 'Search', 'awana-digital-sync' ) ); ?></label>
+								</th>
+								<td>
+									<input type="text" id="awana_search" name="awana_search" value="<?php echo esc_attr( $search_query ); ?>" class="regular-text" placeholder="<?php echo esc_attr( __( 'Enter order ID or invoice ID...', 'awana-digital-sync' ) ); ?>" />
+									<?php submit_button( __( 'Search', 'awana-digital-sync' ), 'secondary', 'submit', false ); ?>
+									<?php if ( ! empty( $search_query ) ) : ?>
+										<a href="<?php echo esc_url( admin_url( 'admin.php?page=awana-sync' ) ); ?>" class="button"><?php echo esc_html( __( 'Clear', 'awana-digital-sync' ) ); ?></a>
+									<?php endif; ?>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</form>
 			</div>
 
 			<!-- Statistics -->
@@ -211,7 +250,15 @@ class Awana_Admin {
 											#<?php echo esc_html( $sync['order_number'] ); ?>
 										</a>
 									</td>
-									<td><?php echo esc_html( $sync['invoice_id'] ); ?></td>
+									<td>
+										<?php if ( ! empty( $sync['invoice_id'] ) && $sync['invoice_id'] !== __( 'N/A', 'awana-digital-sync' ) ) : ?>
+											<a href="<?php echo esc_url( $this->get_firebase_url( $sync['invoice_id'] ) ); ?>" target="_blank" title="<?php echo esc_attr( __( 'View in Firebase', 'awana-digital-sync' ) ); ?>">
+												<?php echo esc_html( $sync['invoice_id'] ); ?>
+											</a>
+										<?php else : ?>
+											<?php echo esc_html( $sync['invoice_id'] ); ?>
+										<?php endif; ?>
+									</td>
 									<td><?php echo esc_html( $sync['sync_type'] ); ?></td>
 									<td>
 										<?php
@@ -383,7 +430,15 @@ class Awana_Admin {
 								<tr>
 									<td><?php echo esc_html( $order['order_id'] ); ?></td>
 									<td><?php echo esc_html( $order['order_number'] ); ?></td>
-									<td><?php echo esc_html( $order['invoice_id'] ); ?></td>
+									<td>
+										<?php if ( ! empty( $order['invoice_id'] ) && $order['invoice_id'] !== __( 'N/A', 'awana-digital-sync' ) ) : ?>
+											<a href="<?php echo esc_url( $this->get_firebase_url( $order['invoice_id'] ) ); ?>" target="_blank" title="<?php echo esc_attr( __( 'View in Firebase', 'awana-digital-sync' ) ); ?>">
+												<?php echo esc_html( $order['invoice_id'] ); ?>
+											</a>
+										<?php else : ?>
+											<?php echo esc_html( $order['invoice_id'] ); ?>
+										<?php endif; ?>
+									</td>
 									<td>
 										<span title="<?php echo esc_attr( $order['error'] ); ?>">
 											<?php echo esc_html( $this->format_sync_error( $order['error'] ) ); ?>
@@ -481,11 +536,29 @@ class Awana_Admin {
 	}
 
 	/**
+	 * Get Firebase URL for invoice ID
+	 *
+	 * @param string $invoice_id Invoice ID.
+	 * @return string Firebase URL.
+	 */
+	private function get_firebase_url( $invoice_id ) {
+		if ( empty( $invoice_id ) ) {
+			return '';
+		}
+		// Firebase uses ~2F to encode / in paths: ~2Finvoices~2F{invoice_id}
+		// The invoice ID is appended directly without additional encoding
+		$encoded_path = '~2Finvoices~2F' . $invoice_id;
+		return 'https://console.firebase.google.com/u/0/project/awana-server/firestore/databases/-default-/data/' . $encoded_path;
+	}
+
+	/**
 	 * Get failed syncs
 	 *
+	 * @param string $search_query Search query.
+	 * @param string $search_type Search type (order_id or invoice_id).
 	 * @return array Array of failed sync orders.
 	 */
-	private function get_failed_syncs() {
+	private function get_failed_syncs( $search_query = '', $search_type = 'order_id' ) {
 		$orders = wc_get_orders(
 			array(
 				'limit'      => 100,
@@ -504,6 +577,16 @@ class Awana_Admin {
 			}
 
 			$invoice_id = $order->get_meta( 'crm_invoice_id', true );
+			
+			// Apply search filter
+			if ( ! empty( $search_query ) ) {
+				if ( $search_type === 'order_id' && strpos( (string) $order_id, $search_query ) === false && strpos( (string) $order->get_order_number(), $search_query ) === false ) {
+					continue;
+				} elseif ( $search_type === 'invoice_id' && ( empty( $invoice_id ) || strpos( (string) $invoice_id, $search_query ) === false ) ) {
+					continue;
+				}
+			}
+
 			$last_error = $order->get_meta( '_awana_sync_last_error', true );
 			$last_attempt = $order->get_meta( '_awana_sync_last_attempt', true );
 			$error_count = $order->get_meta( '_awana_sync_error_count', true );
@@ -589,10 +672,12 @@ class Awana_Admin {
 	/**
 	 * Get recent sync activity
 	 *
-	 * @param int $limit Number of recent syncs to retrieve.
+	 * @param int    $limit Number of recent syncs to retrieve.
+	 * @param string $search_query Search query.
+	 * @param string $search_type Search type (order_id or invoice_id).
 	 * @return array Array of recent sync activities.
 	 */
-	private function get_recent_syncs( $limit = 50 ) {
+	private function get_recent_syncs( $limit = 50, $search_query = '', $search_type = 'order_id' ) {
 		// Get all Awana orders ordered by last sync attempt
 		$orders = wc_get_orders(
 			array(
@@ -614,6 +699,16 @@ class Awana_Admin {
 			}
 
 			$invoice_id = $order->get_meta( 'crm_invoice_id', true );
+			
+			// Apply search filter
+			if ( ! empty( $search_query ) ) {
+				if ( $search_type === 'order_id' && strpos( (string) $order_id, $search_query ) === false && strpos( (string) $order->get_order_number(), $search_query ) === false ) {
+					continue;
+				} elseif ( $search_type === 'invoice_id' && ( empty( $invoice_id ) || strpos( (string) $invoice_id, $search_query ) === false ) ) {
+					continue;
+				}
+			}
+
 			$sync_status = $order->get_meta( 'crm_sync_woo', true );
 			$last_attempt = $order->get_meta( '_awana_sync_last_attempt', true );
 			$last_success = $order->get_meta( '_awana_sync_last_success', true );
@@ -686,9 +781,11 @@ class Awana_Admin {
 	/**
 	 * Get completed orders that haven't been synced as paid
 	 *
+	 * @param string $search_query Search query.
+	 * @param string $search_type Search type (order_id or invoice_id).
 	 * @return array Array of completed orders not synced.
 	 */
-	private function get_completed_orders_not_synced() {
+	private function get_completed_orders_not_synced( $search_query = '', $search_type = 'order_id' ) {
 		$orders = wc_get_orders(
 			array(
 				'limit'      => 100,
@@ -707,6 +804,17 @@ class Awana_Admin {
 				continue;
 			}
 
+			$invoice_id = $order->get_meta( 'crm_invoice_id', true );
+			
+			// Apply search filter
+			if ( ! empty( $search_query ) ) {
+				if ( $search_type === 'order_id' && strpos( (string) $order_id, $search_query ) === false && strpos( (string) $order->get_order_number(), $search_query ) === false ) {
+					continue;
+				} elseif ( $search_type === 'invoice_id' && ( empty( $invoice_id ) || strpos( (string) $invoice_id, $search_query ) === false ) ) {
+					continue;
+				}
+			}
+
 			$last_success = $order->get_meta( '_awana_sync_last_success', true );
 			$order_date = $order->get_date_modified();
 
@@ -715,7 +823,7 @@ class Awana_Admin {
 				$results[] = array(
 					'order_id'       => $order_id,
 					'order_number'   => $order->get_order_number(),
-					'invoice_id'     => $order->get_meta( 'crm_invoice_id', true ),
+					'invoice_id'     => $invoice_id,
 					'completed_date' => $order_date ? $order_date->date_i18n( get_option( 'date_format' ) ) : '',
 				);
 			}
@@ -727,9 +835,11 @@ class Awana_Admin {
 	/**
 	 * Get orders with high error counts
 	 *
+	 * @param string $search_query Search query.
+	 * @param string $search_type Search type (order_id or invoice_id).
 	 * @return array Array of orders with 3+ sync failures.
 	 */
-	private function get_orders_with_high_error_count() {
+	private function get_orders_with_high_error_count( $search_query = '', $search_type = 'order_id' ) {
 		$orders = wc_get_orders(
 			array(
 				'limit'      => 100,
@@ -747,13 +857,24 @@ class Awana_Admin {
 				continue;
 			}
 
+			$invoice_id = $order->get_meta( 'crm_invoice_id', true );
+			
+			// Apply search filter
+			if ( ! empty( $search_query ) ) {
+				if ( $search_type === 'order_id' && strpos( (string) $order_id, $search_query ) === false && strpos( (string) $order->get_order_number(), $search_query ) === false ) {
+					continue;
+				} elseif ( $search_type === 'invoice_id' && ( empty( $invoice_id ) || strpos( (string) $invoice_id, $search_query ) === false ) ) {
+					continue;
+				}
+			}
+
 			$error_count = $order->get_meta( '_awana_sync_error_count', true );
 			$last_error = $order->get_meta( '_awana_sync_last_error', true );
 
 			$results[] = array(
 				'order_id'     => $order_id,
 				'order_number' => $order->get_order_number(),
-				'invoice_id'   => $order->get_meta( 'crm_invoice_id', true ),
+				'invoice_id'   => $invoice_id,
 				'error_count'  => $error_count ? $error_count : 0,
 				'last_error'   => $last_error ? $this->format_sync_error( $last_error ) : __( 'No error message', 'awana-digital-sync' ),
 			);
