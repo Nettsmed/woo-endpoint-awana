@@ -78,9 +78,10 @@ class Awana_CRM_Webhook {
 	 *
 	 * @param WC_Order $order WooCommerce order object.
 	 * @param string   $event_name Event name for logging.
+	 * @param bool     $skip_status_update Whether to skip updating sync status (for use in batch syncs).
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
-	public static function notify_invoice_status_to_crm( $order, $event_name = 'Invoice status sync' ) {
+	public static function notify_invoice_status_to_crm( $order, $event_name = 'Invoice status sync', $skip_status_update = false ) {
 		$invoice_id = $order->get_meta( 'crm_invoice_id' );
 		$member_id  = $order->get_meta( 'crm_member_id' );
 
@@ -153,20 +154,24 @@ class Awana_CRM_Webhook {
 			}
 		}
 
-		// Set sync status to pending before webhook attempt
-		self::update_sync_status( $order, false, '', true );
+		// Set sync status to pending before webhook attempt (unless skipping status updates)
+		if ( ! $skip_status_update ) {
+			self::update_sync_status( $order, false, '', true );
+		}
 
 		$result = self::send_x_api_key_webhook( $webhook_url, $payload, $api_key, $event_name );
 
-		// Update sync status based on result
-		if ( is_wp_error( $result ) ) {
-			$error_message = $result->get_error_message();
-			if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
-				$error_message .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+		// Update sync status based on result (unless skipping status updates)
+		if ( ! $skip_status_update ) {
+			if ( is_wp_error( $result ) ) {
+				$error_message = $result->get_error_message();
+				if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
+					$error_message .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+				}
+				self::update_sync_status( $order, false, $error_message );
+			} else {
+				self::update_sync_status( $order, true );
 			}
-			self::update_sync_status( $order, false, $error_message );
-		} else {
-			self::update_sync_status( $order, true );
 		}
 
 		return $result;
@@ -195,9 +200,10 @@ class Awana_CRM_Webhook {
 	 *
 	 * @param WC_Order $order WooCommerce order object.
 	 * @param mixed    $pog_customer_number POG customer number.
+	 * @param bool     $skip_status_update Whether to skip updating sync status (for use in batch syncs).
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
-	public static function notify_pog_customer_number_to_crm( $order, $pog_customer_number ) {
+	public static function notify_pog_customer_number_to_crm( $order, $pog_customer_number, $skip_status_update = false ) {
 		$invoice_id = $order->get_meta( 'crm_invoice_id' );
 		$member_id  = $order->get_meta( 'crm_member_id' );
 
@@ -238,20 +244,24 @@ class Awana_CRM_Webhook {
 			'pog_customer_number' => (string) $pog_customer_number,
 		);
 
-		// Set sync status to pending before webhook attempt
-		self::update_sync_status( $order, false, '', true );
+		// Set sync status to pending before webhook attempt (unless skipping status updates)
+		if ( ! $skip_status_update ) {
+			self::update_sync_status( $order, false, '', true );
+		}
 
 		$result = self::send_pog_customer_webhook( $webhook_url, $payload, $api_key, 'POG customer number sync' );
 
-		// Update sync status based on result
-		if ( is_wp_error( $result ) ) {
-			$error_message = $result->get_error_message();
-			if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
-				$error_message .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+		// Update sync status based on result (unless skipping status updates)
+		if ( ! $skip_status_update ) {
+			if ( is_wp_error( $result ) ) {
+				$error_message = $result->get_error_message();
+				if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
+					$error_message .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+				}
+				self::update_sync_status( $order, false, $error_message );
+			} else {
+				self::update_sync_status( $order, true );
 			}
-			self::update_sync_status( $order, false, $error_message );
-		} else {
-			self::update_sync_status( $order, true );
 		}
 
 		return $result;
@@ -416,26 +426,48 @@ class Awana_CRM_Webhook {
 
 		$results = array();
 		$has_errors = false;
+		$error_messages = array();
 
-		// Sync POG customer number if exists
+		// Set sync status to pending before starting batch sync
+		self::update_sync_status( $order, false, '', true );
+
+		// Sync POG customer number if exists (skip individual status updates)
 		$pog_customer_number = $order->get_meta( 'pog_customer_number', true );
 		if ( ! empty( $pog_customer_number ) ) {
-			$result = self::notify_pog_customer_number_to_crm( $order, $pog_customer_number );
+			$result = self::notify_pog_customer_number_to_crm( $order, $pog_customer_number, true );
 			if ( is_wp_error( $result ) ) {
-				$results[] = 'POG customer number sync failed: ' . $result->get_error_message();
+				$error_msg = $result->get_error_message();
+				if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
+					$error_msg .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+				}
+				$results[] = 'POG customer number sync failed: ' . $error_msg;
+				$error_messages[] = $error_msg;
 				$has_errors = true;
 			} else {
 				$results[] = 'POG customer number synced successfully';
 			}
 		}
 
-		// Sync invoice status (includes POG status, KID, invoice number, and order status)
-		$result = self::notify_invoice_status_to_crm( $order, 'Manual sync' );
+		// Sync invoice status (includes POG status, KID, invoice number, and order status) (skip individual status updates)
+		$result = self::notify_invoice_status_to_crm( $order, 'Manual sync', true );
 		if ( is_wp_error( $result ) ) {
-			$results[] = 'Invoice status sync failed: ' . $result->get_error_message();
+			$error_msg = $result->get_error_message();
+			if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
+				$error_msg .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+			}
+			$results[] = 'Invoice status sync failed: ' . $error_msg;
+			$error_messages[] = $error_msg;
 			$has_errors = true;
 		} else {
 			$results[] = 'Invoice status synced successfully';
+		}
+
+		// Update sync status based on combined results
+		if ( $has_errors ) {
+			$combined_error_message = implode( '; ', $error_messages );
+			self::update_sync_status( $order, false, $combined_error_message );
+		} else {
+			self::update_sync_status( $order, true );
 		}
 
 		return array(
