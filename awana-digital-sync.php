@@ -3,7 +3,7 @@
  * Plugin Name: Awana Digital Sync
  * Plugin URI: https://awana.no
  * Description: Syncs invoices from Digital/CRM to WooCommerce as guest orders and handles POG/Integrera sync updates.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Awana
  * Author URI: https://awana.no
  * Requires at least: 5.8
@@ -25,7 +25,7 @@ if ( ! in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins',
 }
 
 // Define plugin constants
-define( 'AWANA_DIGITAL_SYNC_VERSION', '1.0.0' );
+define( 'AWANA_DIGITAL_SYNC_VERSION', '1.1.1' );
 define( 'AWANA_DIGITAL_SYNC_PATH', plugin_dir_path( __FILE__ ) );
 define( 'AWANA_DIGITAL_SYNC_URL', plugin_dir_url( __FILE__ ) );
 
@@ -39,6 +39,12 @@ include_once 'includes/class-awana-rest-controller.php';
 
 // Initialize the plugin
 Awana_REST_Controller::init();
+
+// Initialize admin UI only in admin context
+if ( is_admin() ) {
+	include_once 'includes/class-awana-admin.php';
+	Awana_Admin::init();
+}
 
 /**
  * Detect when Integrera updates pog_customer_number and sync to CRM
@@ -114,6 +120,37 @@ add_action( 'updated_postmeta', function( $meta_id, $object_id, $meta_key, $meta
 		$order->update_meta_data( $synced_meta_key, $meta_value );
 		$order->save();
 	}
+}, 10, 4 );
+
+/**
+ * Detect when WooCommerce order status changes to "completed" and sync to CRM
+ */
+add_action( 'woocommerce_order_status_changed', function( $order_id, $old_status, $new_status, $order ) {
+	// Only process if status changed to "completed"
+	if ( $new_status !== 'completed' ) {
+		return;
+	}
+
+	// Check if this is an Awana order
+	$invoice_id = $order->get_meta( 'crm_invoice_id', true );
+	$member_id  = $order->get_meta( 'crm_member_id', true );
+
+	if ( empty( $invoice_id ) || empty( $member_id ) ) {
+		return; // Not an Awana order, skip
+	}
+
+	Awana_Logger::info(
+		'Order status changed to completed - syncing to CRM',
+		array(
+			'order_id'   => $order_id,
+			'old_status' => $old_status,
+			'new_status' => $new_status,
+			'invoice_id' => $invoice_id,
+		)
+	);
+
+	// Trigger invoice status sync (will send status="paid" because order is completed)
+	Awana_CRM_Webhook::notify_invoice_status_to_crm( $order, 'Order status changed to completed' );
 }, 10, 4 );
 
 /**
