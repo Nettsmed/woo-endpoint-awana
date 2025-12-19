@@ -52,18 +52,36 @@ class Awana_CRM_Webhook {
 			'timestamp'  => current_time( 'mysql' ),
 		);
 
-		return self::send_webhook( $webhook_url, $payload, 'Invoice paid' );
+		// Set sync status to pending before webhook attempt
+		self::update_sync_status( $order, false, '', true );
+
+		$result = self::send_webhook( $webhook_url, $payload, 'Invoice paid' );
+
+		// Update sync status based on result
+		if ( is_wp_error( $result ) ) {
+			$error_message = $result->get_error_message();
+			if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
+				$error_message .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+			}
+			self::update_sync_status( $order, false, $error_message );
+		} else {
+			self::update_sync_status( $order, true );
+		}
+
+		return $result;
 	}
 
 	/**
 	 * Send webhook to invoiceStatusWebhook when Integrera updates POG status-related fields.
 	 * Sends payload containing invoiceId and any of: kid, pogInvoiceNumber/invoiceNumber and mapped status.
+	 * Status mapping prioritizes WooCommerce order status over POG status.
 	 *
 	 * @param WC_Order $order WooCommerce order object.
 	 * @param string   $event_name Event name for logging.
+	 * @param bool     $skip_status_update Whether to skip updating sync status (for use in batch syncs).
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
-	public static function notify_invoice_status_to_crm( $order, $event_name = 'Invoice status sync' ) {
+	public static function notify_invoice_status_to_crm( $order, $event_name = 'Invoice status sync', $skip_status_update = false ) {
 		$invoice_id = $order->get_meta( 'crm_invoice_id' );
 		$member_id  = $order->get_meta( 'crm_member_id' );
 
@@ -97,6 +115,7 @@ class Awana_CRM_Webhook {
 		$pog_invoice_number  = $order->get_meta( 'pog_invoice_number', true );
 		$pog_kid_number      = $order->get_meta( 'pog_kid_number', true );
 		$pog_status          = $order->get_meta( 'pog_status', true );
+		$order_status        = $order->get_status();
 
 		$payload = array(
 			'invoiceId' => $invoice_id,
@@ -112,7 +131,12 @@ class Awana_CRM_Webhook {
 			$payload['invoiceNumber']    = (string) $pog_invoice_number;
 		}
 
-		if ( ! empty( $pog_status ) ) {
+		// Prioritize WooCommerce order status over POG status
+		if ( $order_status === 'completed' ) {
+			// If order is completed, always send status="paid" regardless of POG status
+			$payload['status'] = 'paid';
+		} elseif ( ! empty( $pog_status ) ) {
+			// Otherwise, use POG status mapping
 			$mapped_status = self::map_pog_status_to_webhook_status( $pog_status );
 			if ( $mapped_status !== null ) {
 				$payload['status'] = $mapped_status;
@@ -130,7 +154,27 @@ class Awana_CRM_Webhook {
 			}
 		}
 
-		return self::send_x_api_key_webhook( $webhook_url, $payload, $api_key, $event_name );
+		// Set sync status to pending before webhook attempt (unless skipping status updates)
+		if ( ! $skip_status_update ) {
+			self::update_sync_status( $order, false, '', true );
+		}
+
+		$result = self::send_x_api_key_webhook( $webhook_url, $payload, $api_key, $event_name );
+
+		// Update sync status based on result (unless skipping status updates)
+		if ( ! $skip_status_update ) {
+			if ( is_wp_error( $result ) ) {
+				$error_message = $result->get_error_message();
+				if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
+					$error_message .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+				}
+				self::update_sync_status( $order, false, $error_message );
+			} else {
+				self::update_sync_status( $order, true );
+			}
+		}
+
+		return $result;
 	}
 
 	/**
@@ -143,7 +187,7 @@ class Awana_CRM_Webhook {
 		$normalized = strtolower( trim( (string) $pog_status ) );
 		switch ( $normalized ) {
 			case 'order':
-				return 'pending';
+				return 'transferred';
 			case 'invoice':
 				return 'unpaid';
 			default:
@@ -156,9 +200,10 @@ class Awana_CRM_Webhook {
 	 *
 	 * @param WC_Order $order WooCommerce order object.
 	 * @param mixed    $pog_customer_number POG customer number.
+	 * @param bool     $skip_status_update Whether to skip updating sync status (for use in batch syncs).
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
-	public static function notify_pog_customer_number_to_crm( $order, $pog_customer_number ) {
+	public static function notify_pog_customer_number_to_crm( $order, $pog_customer_number, $skip_status_update = false ) {
 		$invoice_id = $order->get_meta( 'crm_invoice_id' );
 		$member_id  = $order->get_meta( 'crm_member_id' );
 
@@ -199,7 +244,27 @@ class Awana_CRM_Webhook {
 			'pog_customer_number' => (string) $pog_customer_number,
 		);
 
-		return self::send_pog_customer_webhook( $webhook_url, $payload, $api_key, 'POG customer number sync' );
+		// Set sync status to pending before webhook attempt (unless skipping status updates)
+		if ( ! $skip_status_update ) {
+			self::update_sync_status( $order, false, '', true );
+		}
+
+		$result = self::send_pog_customer_webhook( $webhook_url, $payload, $api_key, 'POG customer number sync' );
+
+		// Update sync status based on result (unless skipping status updates)
+		if ( ! $skip_status_update ) {
+			if ( is_wp_error( $result ) ) {
+				$error_message = $result->get_error_message();
+				if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
+					$error_message .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+				}
+				self::update_sync_status( $order, false, $error_message );
+			} else {
+				self::update_sync_status( $order, true );
+			}
+		}
+
+		return $result;
 	}
 
 	/**
@@ -298,6 +363,117 @@ class Awana_CRM_Webhook {
 	 */
 	private static function send_pog_customer_webhook( $url, $payload, $api_key, $event_name ) {
 		return self::send_x_api_key_webhook( $url, $payload, $api_key, $event_name );
+	}
+
+	/**
+	 * Update sync status for an order.
+	 *
+	 * @param WC_Order $order WooCommerce order object.
+	 * @param bool     $success Whether the sync was successful.
+	 * @param string   $error_message Error message if sync failed.
+	 * @param bool     $is_pending Whether this is setting status to pending before attempt.
+	 * @return void
+	 */
+	private static function update_sync_status( $order, $success, $error_message = '', $is_pending = false ) {
+		$current_time = time();
+
+		if ( $is_pending ) {
+			$order->update_meta_data( 'crm_sync_woo', 'pending' );
+			$order->update_meta_data( '_awana_sync_last_attempt', $current_time );
+		} elseif ( $success ) {
+			$order->update_meta_data( 'crm_sync_woo', 'success' );
+			$order->update_meta_data( '_awana_sync_last_attempt', $current_time );
+			$order->update_meta_data( '_awana_sync_last_success', $current_time );
+			$order->delete_meta_data( '_awana_sync_last_error' );
+			$order->update_meta_data( '_awana_sync_error_count', 0 );
+		} else {
+			$order->update_meta_data( 'crm_sync_woo', 'failed' );
+			$order->update_meta_data( '_awana_sync_last_attempt', $current_time );
+			$order->update_meta_data( '_awana_sync_last_error', $error_message );
+			$current_count = (int) $order->get_meta( '_awana_sync_error_count', true );
+			$order->update_meta_data( '_awana_sync_error_count', $current_count + 1 );
+		}
+
+		$order->save();
+	}
+
+	/**
+	 * Sync all order metadata to CRM (manual sync).
+	 *
+	 * @param int  $order_id WooCommerce order ID.
+	 * @param bool $force Whether to force sync even if already synced.
+	 * @return array Array with 'success' boolean and 'message' string.
+	 */
+	public static function sync_all_order_metadata_to_crm( $order_id, $force = false ) {
+		$order = wc_get_order( $order_id );
+
+		if ( ! $order ) {
+			return array(
+				'success' => false,
+				'message' => sprintf( 'Order #%d not found.', $order_id ),
+			);
+		}
+
+		$invoice_id = $order->get_meta( 'crm_invoice_id', true );
+		$member_id  = $order->get_meta( 'crm_member_id', true );
+
+		if ( empty( $invoice_id ) || empty( $member_id ) ) {
+			return array(
+				'success' => false,
+				'message' => sprintf( 'Order #%d is not an Awana order (missing invoice_id or member_id).', $order_id ),
+			);
+		}
+
+		$results = array();
+		$has_errors = false;
+		$error_messages = array();
+
+		// Set sync status to pending before starting batch sync
+		self::update_sync_status( $order, false, '', true );
+
+		// Sync POG customer number if exists (skip individual status updates)
+		$pog_customer_number = $order->get_meta( 'pog_customer_number', true );
+		if ( ! empty( $pog_customer_number ) ) {
+			$result = self::notify_pog_customer_number_to_crm( $order, $pog_customer_number, true );
+			if ( is_wp_error( $result ) ) {
+				$error_msg = $result->get_error_message();
+				if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
+					$error_msg .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+				}
+				$results[] = 'POG customer number sync failed: ' . $error_msg;
+				$error_messages[] = $error_msg;
+				$has_errors = true;
+			} else {
+				$results[] = 'POG customer number synced successfully';
+			}
+		}
+
+		// Sync invoice status (includes POG status, KID, invoice number, and order status) (skip individual status updates)
+		$result = self::notify_invoice_status_to_crm( $order, 'Manual sync', true );
+		if ( is_wp_error( $result ) ) {
+			$error_msg = $result->get_error_message();
+			if ( $result->get_error_data() && isset( $result->get_error_data()['status'] ) ) {
+				$error_msg .= ' (HTTP ' . $result->get_error_data()['status'] . ')';
+			}
+			$results[] = 'Invoice status sync failed: ' . $error_msg;
+			$error_messages[] = $error_msg;
+			$has_errors = true;
+		} else {
+			$results[] = 'Invoice status synced successfully';
+		}
+
+		// Update sync status based on combined results
+		if ( $has_errors ) {
+			$combined_error_message = implode( '; ', $error_messages );
+			self::update_sync_status( $order, false, $combined_error_message );
+		} else {
+			self::update_sync_status( $order, true );
+		}
+
+		return array(
+			'success' => ! $has_errors,
+			'message' => implode( '; ', $results ),
+		);
 	}
 
 	/**

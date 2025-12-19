@@ -78,3 +78,5 @@ function awana_log( $message, $context = array() ) {
 	Awana_Logger::info( $message, $context );
 }
 
+
+

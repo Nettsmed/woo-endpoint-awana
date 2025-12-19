@@ -340,7 +340,8 @@ class Awana_Order_Handler {
 		if ( ! empty( $data['source'] ) ) {
 			$order->update_meta_data( 'crm_source', $data['source'] );
 		}
-		$order->update_meta_data( 'crm_sync_woo', 'synced' );
+		// Initialize sync status as 'never_synced' for new orders from CRM
+		$order->update_meta_data( 'crm_sync_woo', 'never_synced' );
 
 		if ( ! empty( $data['pogCustomerNumber'] ) ) {
 			$order->update_meta_data( 'pog_customer_number', $data['pogCustomerNumber'] );
