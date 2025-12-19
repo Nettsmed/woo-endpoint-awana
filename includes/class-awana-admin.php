@@ -156,6 +156,13 @@ class Awana_Admin {
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html( __( 'Awana Sync Management', 'awana-digital-sync' ) ); ?></h1>
+			
+			<div class="notice notice-info" style="margin: 20px 0;">
+				<p>
+					<strong><?php echo esc_html( __( 'About this dashboard:', 'awana-digital-sync' ) ); ?></strong>
+					<?php echo esc_html( __( 'This dashboard tracks the sync status between AWANA CRM and Wipnos (WooCommerce). It does not track Integrera sync operations.', 'awana-digital-sync' ) ); ?>
+				</p>
+			</div>
 
 			<!-- Statistics -->
 			<div class="awana-sync-stats" style="margin: 20px 0;">
@@ -548,7 +555,9 @@ class Awana_Admin {
 			}
 		}
 
-		$success_rate = $total_synced > 0 ? round( ( $success_count / $total_synced ) * 100, 1 ) : 0;
+		// Calculate success rate based only on orders that have attempted to sync (success + failed)
+		$total_attempted = $success_count + $failed_count;
+		$success_rate = $total_attempted > 0 ? round( ( $success_count / $total_attempted ) * 100, 1 ) : 0;
 
 		return array(
 			'total_synced' => $total_synced,
