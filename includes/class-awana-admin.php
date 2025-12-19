@@ -852,11 +852,12 @@ class Awana_Admin {
 	private function get_orders_with_high_error_count( $search_query = '', $search_type = 'order_id' ) {
 		$orders = wc_get_orders(
 			array(
-				'limit'      => 100,
-				'meta_key'   => '_awana_sync_error_count',
-				'meta_value' => 3,
+				'limit'       => 100,
+				'meta_key'    => '_awana_sync_error_count',
+				'meta_value'  => 3,
 				'meta_compare' => '>=',
-				'return'     => 'ids',
+				'meta_type'   => 'NUMERIC',
+				'return'      => 'ids',
 			)
 		);
 
