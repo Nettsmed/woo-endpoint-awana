@@ -765,7 +765,7 @@ class Awana_Admin {
 
 		// Check if sync happened after order was completed
 		if ( $order_status === 'completed' && $last_success ) {
-			$order_date = $order->get_date_modified();
+			$order_date = $order->get_date_completed();
 			if ( $order_date && $last_success >= $order_date->getTimestamp() ) {
 				return __( 'Order Status Change', 'awana-digital-sync' );
 			}
@@ -826,7 +826,7 @@ class Awana_Admin {
 			}
 
 			$last_success = $order->get_meta( '_awana_sync_last_success', true );
-			$order_date = $order->get_date_modified();
+			$order_date = $order->get_date_completed();
 
 			// If never synced, or last sync was before order was completed
 			if ( ! $last_success || ( $order_date && $last_success < $order_date->getTimestamp() ) ) {
