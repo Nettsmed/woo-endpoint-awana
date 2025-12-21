@@ -350,14 +350,35 @@ class Awana_Order_Handler {
 		}
 
 		// Store POG custom fields from invoice
-		if ( isset( $data['pogDepartmentId'] ) && is_numeric( $data['pogDepartmentId'] ) ) {
-			$order->update_meta_data( 'pog_department_id', intval( $data['pogDepartmentId'] ) );
+		// Department ID field must contain CODE (string), not ID (integer) - Integrera requirement
+		$department_code = null;
+		if ( ! empty( $data['pogDepartmentCode'] ) ) {
+			$department_code = sanitize_text_field( $data['pogDepartmentCode'] );
+		} elseif ( ! empty( $data['pogDepartmentId'] ) ) {
+			// If numeric, it's an ID - log warning and don't store (Integrera needs code, not ID)
+			if ( is_numeric( $data['pogDepartmentId'] ) ) {
+				Awana_Logger::warning(
+					'pogDepartmentId received as numeric ID - Integrera requires department CODE (string). Please update CRM to send pogDepartmentCode.',
+					array( 'pogDepartmentId' => $data['pogDepartmentId'] )
+				);
+			} else {
+				// If it's already a string/code, use it
+				$department_code = sanitize_text_field( $data['pogDepartmentId'] );
+			}
 		}
+		// Store as pog_department_id (field name Integrera reads) but with code value (string)
+		if ( ! empty( $department_code ) ) {
+			$order->update_meta_data( 'pog_department_id', $department_code );
+		}
+		// Our reference should be employee code (string)
 		if ( ! empty( $data['pogOurReference'] ) ) {
 			$order->update_meta_data( 'pog_our_reference', sanitize_text_field( $data['pogOurReference'] ) );
 		}
+		// Your reference must be string format
 		if ( ! empty( $data['pogYourReference'] ) ) {
-			$order->update_meta_data( 'pog_your_reference', sanitize_text_field( $data['pogYourReference'] ) );
+			// Ensure it's always stored as string, even if numeric
+			$your_ref = is_numeric( $data['pogYourReference'] ) ? strval( $data['pogYourReference'] ) : $data['pogYourReference'];
+			$order->update_meta_data( 'pog_your_reference', sanitize_text_field( $your_ref ) );
 		}
 		if ( isset( $data['pogOurReferenceId'] ) && is_numeric( $data['pogOurReferenceId'] ) ) {
 			$order->update_meta_data( 'pog_our_reference_id', intval( $data['pogOurReferenceId'] ) );
